@@ -95,7 +95,7 @@ for (int i = 0; i < SLIT_AMOUNT; i++)
     //    the ray travels along the tape's normal (Z) axis toward the display.
     if (!GeometryMath.GetProjectionPoint(groundPoint, slits[i].Center, displaySurface, out Point3D segmentCenter))
     {
-        Console.WriteLine($"Warning: Could not project slit {i} onto display surface (ray is parallel to surface).");
+        Console.WriteLine($"Warning: Slit {i} cannot be projected - the ray from ground point through slit center is parallel to the display surface.");
         continue;
     }
 
