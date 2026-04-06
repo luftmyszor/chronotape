@@ -13,7 +13,6 @@ const double SLIT_SEGMENT_CENTER_DISTANCE = 50;
 const int SLIT_AMOUNT = 4;
 
 const double TAPE_TOP_HEIGHT_FROM_GROUND = 100;
-const double LIGHT_SOURCE_Z = 0;
 /*
  *          +Y (Up)
  *             ^
@@ -76,31 +75,43 @@ foreach (var slit in slits)
     Console.WriteLine($"X: {slit.Center.X} Y: {slit.Center.Y}  Z: {slit.Center.Z} ");
 }
 
-// --- Displayed Segments Setup ---
-// Frames are defined directly on the display surface without raycasting.
+// --- Ceiling Displayed Segments Setup ---
 
 var displayedSegments = new List<Frame>();
-
-// Calculate the "Up" direction so each frame lies flat on the display surface,
-// aligned with the tape's direction. This is constant for all frames because
-// the display surface normal and tape direction are the same for every frame.
-Vector3D surfaceUp = Vector3D.Cross(displaySurface.Normal, slitFramesDirection);
 
 for (int i = 0; i < SLIT_AMOUNT; i++)
 {
     double currentOffset = (i - middleIndex) * DISPLAYED_SEGMENT_CENTER_DISTANCE;
 
-    // Place the frame center directly on the display surface.
-    Point3D segmentCenter = new Point3D(
-        surfacePoint.X + (slitFramesDirection.X * currentOffset),
-        surfacePoint.Y + (slitFramesDirection.Y * currentOffset),
-        surfacePoint.Z + (slitFramesDirection.Z * currentOffset)
+    // 2. Find the "shadow" of this segment on the flat floor
+    Point3D groundPoint = new Point3D(
+        chronotapeFrameOrigin.X + (slitFramesDirection.X * currentOffset),
+        chronotapeFrameOrigin.Y,
+        chronotapeFrameOrigin.Z + (slitFramesDirection.Z * currentOffset)
     );
 
+    // 3. Project a ray from the ground point, through the corresponding slit center,
+    //    onto the display surface. This works for any surface orientation because
+    //    the ray travels along the tape's normal (Z) axis toward the display.
+    if (!GeometryMath.GetProjectionPoint(groundPoint, slits[i].Center, displaySurface, out Point3D segmentCenter))
+    {
+        Console.WriteLine($"Warning: Slit {i} cannot be projected - the ray from ground point through slit center is parallel to the display surface.");
+        continue;
+    }
+
+    // 4. Calculate the perfect "Up" direction for the frame so it lies flat on the surface.
+    // By crossing the Plane's Normal with the Track's Direction, it aligns perfectly to the track.
+    Vector3D surfaceUp = new Vector3D(
+        (displaySurface.Normal.Y * slitFramesDirection.Z) - (displaySurface.Normal.Z * slitFramesDirection.Y),
+        (displaySurface.Normal.Z * slitFramesDirection.X) - (displaySurface.Normal.X * slitFramesDirection.Z),
+        (displaySurface.Normal.X * slitFramesDirection.Y) - (displaySurface.Normal.Y * slitFramesDirection.X)
+    );
+
+    // 5. Create and add the frame
     Frame newSegment = new Frame(
         segmentCenter,
-        displaySurface.Normal,
-        surfaceUp,
+        displaySurface.Normal, // Faces the exact direction of the arbitrary plane
+        surfaceUp,             // Lies flat on the plane, following the track
         DISPLAYED_WIDTH,
         DISPLAYED_HEIGHT
     );
@@ -108,47 +119,9 @@ for (int i = 0; i < SLIT_AMOUNT; i++)
     displayedSegments.Add(newSegment);
 }
 
-Console.WriteLine("\n--- Displayed Segments ---");
+// --- Quick test for Ceiling Segments ---
+Console.WriteLine("\n--- Displayed Segments (Any Surface) ---");
 foreach (var segment in displayedSegments)
 {
     Console.WriteLine($"X: {segment.Center.X}  Y: {segment.Center.Y}  Z: {segment.Center.Z}");
-}
-
-// --- Light Source Calculation ---
-// For each tape frame, cast rays from the corresponding display frame's corners
-// through the tape frame's corners to determine where the light source should be.
-
-Plane lightSourcePlane = new Plane(new Vector3D(0, 0, 1), new Point3D(0, 0, LIGHT_SOURCE_Z));
-var lightSources = new List<Point3D>();
-
-for (int i = 0; i < SLIT_AMOUNT; i++)
-{
-    Frame displayFrame = displayedSegments[i];
-    Frame tapeFrame = slits[i];
-
-    if (!GeometryMath.GetProjectionPoint(displayFrame.TopLeft, tapeFrame.TopLeft, lightSourcePlane, out Point3D tlSource) ||
-        !GeometryMath.GetProjectionPoint(displayFrame.TopRight, tapeFrame.TopRight, lightSourcePlane, out Point3D trSource) ||
-        !GeometryMath.GetProjectionPoint(displayFrame.BottomLeft, tapeFrame.BottomLeft, lightSourcePlane, out Point3D blSource) ||
-        !GeometryMath.GetProjectionPoint(displayFrame.BottomRight, tapeFrame.BottomRight, lightSourcePlane, out Point3D brSource))
-    {
-        Console.WriteLine($"Warning: Cannot determine light source for tape frame {i}.");
-        continue;
-    }
-
-    // Average the 4 intersection points. For a perfect point-source projection the
-    // four rays converge at the same spot; averaging handles any floating-point drift
-    // and keeps the code correct for non-axis-aligned source planes.
-    Point3D lightSource = new Point3D(
-        (tlSource.X + trSource.X + blSource.X + brSource.X) / 4,
-        (tlSource.Y + trSource.Y + blSource.Y + brSource.Y) / 4,
-        (tlSource.Z + trSource.Z + blSource.Z + brSource.Z) / 4
-    );
-
-    lightSources.Add(lightSource);
-}
-
-Console.WriteLine("\n--- Light Sources ---");
-foreach (var ls in lightSources)
-{
-    Console.WriteLine($"X: {ls.X}  Y: {ls.Y}  Z: {ls.Z}");
 }
