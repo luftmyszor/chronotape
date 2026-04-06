@@ -90,33 +90,14 @@ for (int i = 0; i < SLIT_AMOUNT; i++)
         chronotapeFrameOrigin.Z + (slitFramesDirection.Z * currentOffset)
     );
 
-    // 3. Shoot a ray straight UP from the ground point to hit the display surface
-    Vector3D upDirection = new Vector3D(0, 1, 0);
-
-    // --- Inline Ray-Plane Intersection Math ---
-    double dotDirNormal = (upDirection.X * displaySurface.Normal.X) +
-                          (upDirection.Y * displaySurface.Normal.Y) +
-                          (upDirection.Z * displaySurface.Normal.Z);
-
-    Vector3D originToPlane = new Vector3D(
-        displaySurface.Point.X - groundPoint.X,
-        displaySurface.Point.Y - groundPoint.Y,
-        displaySurface.Point.Z - groundPoint.Z
-    );
-
-    double dotOriginNormal = (originToPlane.X * displaySurface.Normal.X) +
-                             (originToPlane.Y * displaySurface.Normal.Y) +
-                             (originToPlane.Z * displaySurface.Normal.Z);
-
-    double t = dotOriginNormal / dotDirNormal;
-
-    // We found the exact intersection point on the arbitrary surface!
-    Point3D segmentCenter = new Point3D(
-        groundPoint.X + (upDirection.X * t),
-        groundPoint.Y + (upDirection.Y * t),
-        groundPoint.Z + (upDirection.Z * t)
-    );
-    // ------------------------------------------
+    // 3. Project a ray from the ground point, through the corresponding slit center,
+    //    onto the display surface. This works for any surface orientation because
+    //    the ray travels along the tape's normal (Z) axis toward the display.
+    if (!GeometryMath.GetProjectionPoint(groundPoint, slits[i].Center, displaySurface, out Point3D segmentCenter))
+    {
+        Console.WriteLine($"Warning: Slit {i} cannot be projected - the ray from ground point through slit center is parallel to the display surface.");
+        continue;
+    }
 
     // 4. Calculate the perfect "Up" direction for the frame so it lies flat on the surface.
     // By crossing the Plane's Normal with the Track's Direction, it aligns perfectly to the track.
