@@ -1,12 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "9C6AwxVrOcY=",
+  "dgSpecHash": "URSKkINevAg=",
   "success": true,
   "projectFilePath": "/home/runner/work/chronotape/chronotape/tape-gen/tape-gen.csproj",
-  "expectedPackageFiles": [
-    "/tmp/codeql-scratch-f7f36d7c0823d513/dbs/csharp/working/packages/microsoft.netcore.app.ref/10.0.5/microsoft.netcore.app.ref.10.0.5.nupkg.sha512",
-    "/tmp/codeql-scratch-f7f36d7c0823d513/dbs/csharp/working/packages/microsoft.aspnetcore.app.ref/10.0.5/microsoft.aspnetcore.app.ref.10.0.5.nupkg.sha512",
-    "/tmp/codeql-scratch-f7f36d7c0823d513/dbs/csharp/working/packages/microsoft.netcore.app.host.linux-x64/10.0.5/microsoft.netcore.app.host.linux-x64.10.0.5.nupkg.sha512"
-  ],
+  "expectedPackageFiles": [],
   "logs": []
 }
