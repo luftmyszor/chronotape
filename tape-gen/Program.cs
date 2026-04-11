@@ -269,14 +269,14 @@ static ProjectionOptions? ParseProjectionOptions(string[] cliArgs)
 
     if (!map.TryGetValue("--font", out string? fontPath) || string.IsNullOrWhiteSpace(fontPath))
     {
-        Console.WriteLine("Both --font and --text are required when running projection mode.");
+        Console.WriteLine("--font is required when running projection mode.");
         PrintUsage();
         Environment.Exit(1);
     }
 
     if (!map.TryGetValue("--text", out string? text) || string.IsNullOrEmpty(text))
     {
-        Console.WriteLine("Both --font and --text are required when running projection mode.");
+        Console.WriteLine("--text is required when running projection mode.");
         PrintUsage();
         Environment.Exit(1);
     }
