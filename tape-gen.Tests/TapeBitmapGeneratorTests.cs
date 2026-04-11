@@ -1,5 +1,6 @@
 using SkiaSharp;
 using Xunit;
+using System.Reflection;
 
 public sealed class TapeBitmapGeneratorTests
 {
@@ -143,6 +144,29 @@ public sealed class TapeBitmapGeneratorTests
         Assert.True(opaqueBounds.Top <= spec.MainPaddingYPx + 1);
         Assert.True(opaqueBounds.Right >= (spec.SegmentWidthPx - spec.MainPaddingXPx) - 1);
         Assert.True(opaqueBounds.Bottom >= (spec.SegmentHeightPx - spec.MainPaddingYPx) - 1);
+    }
+
+    [Fact]
+    public void CropToOpaqueBounds_IgnoresLowAlphaFringePixels()
+    {
+        using var bitmap = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
+        bitmap.Erase(SKColors.Transparent);
+        bitmap.SetPixel(0, 0, new SKColor(255, 255, 255, 1));
+        for (int y = 4; y <= 6; y++)
+        {
+            for (int x = 4; x <= 6; x++)
+            {
+                bitmap.SetPixel(x, y, SKColors.White);
+            }
+        }
+
+        MethodInfo? cropMethod = typeof(TapeBitmapGenerator).GetMethod("CropToOpaqueBounds", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(cropMethod);
+
+        using var cropped = (SKBitmap?)cropMethod!.Invoke(null, [bitmap, "test"]);
+        Assert.NotNull(cropped);
+        Assert.Equal(3, cropped!.Width);
+        Assert.Equal(3, cropped.Height);
     }
 
     private static SKRectI BuildApertureRect(TapeSpec spec)

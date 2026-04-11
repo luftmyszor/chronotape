@@ -48,6 +48,7 @@ internal static class TapeBitmapGenerator
     private const int ProjectionSampleStep = 1;
     private const float MinimumDisplayDistance = 1f;
     private const float MaxFontSearchUpperBound = 8192f;
+    private const byte GlyphMaskAlphaThreshold = 16;
 
     public static SKBitmap GenerateTapeBitmap(TapeSpec spec)
     {
@@ -431,7 +432,7 @@ internal static class TapeBitmapGenerator
         {
             for (int x = 0; x < bitmap.Width; x++)
             {
-                if (bitmap.GetPixel(x, y).Alpha == 0)
+                if (!IsSignificantMaskPixel(bitmap.GetPixel(x, y)))
                 {
                     continue;
                 }
@@ -465,7 +466,7 @@ internal static class TapeBitmapGenerator
         {
             for (int x = 0; x < bitmap.Width; x += step)
             {
-                if (bitmap.GetPixel(x, y).Alpha == 0)
+                if (!IsSignificantMaskPixel(bitmap.GetPixel(x, y)))
                 {
                     continue;
                 }
@@ -482,6 +483,8 @@ internal static class TapeBitmapGenerator
 
         return sampled;
     }
+
+    private static bool IsSignificantMaskPixel(SKColor color) => color.Alpha >= GlyphMaskAlphaThreshold;
 
     private static float FindLargestFittingCellTextSize(int targetWidth, int targetHeight, SKTypeface typeface)
     {
