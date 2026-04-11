@@ -19,7 +19,35 @@
 - If `SlitCount > 1`, `ExportTape` writes one file per slit using suffixes:
   - `...-slit-0.png`, `...-slit-1.png`, etc.
 
-### Sample CLI
+### Generate a tape from actual values
+
+Generate tape output(s) from values you provide:
+
+```bash
+dotnet run --project ./tape-gen/tape-gen.csproj -- \
+  --generate-tape \
+  --segment-characters 7391 \
+  --main-characters 9137 \
+  --offset 1 \
+  --slit-count 2 \
+  --tape-out ./tape.png
+```
+
+Input precedence:
+
+1. CLI flags
+2. Environment variables
+3. `--tape-config <path-to-json>`
+4. Built-in non-sample defaults (layout/output defaults only)
+
+Required values (must be provided via CLI/env/config):
+
+- `SegmentCharacters` (`--segment-characters` / `CHRONOTAPE_SEGMENT_CHARACTERS`)
+- `MainCharacters` (`--main-characters` / `CHRONOTAPE_MAIN_CHARACTERS`)
+
+If required values are missing, tape generation fails with a clear error instead of falling back to sample values.
+
+### Sample CLI (documentation/testing)
 
 Generate sample tape output(s):
 

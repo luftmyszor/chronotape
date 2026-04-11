@@ -1,6 +1,30 @@
 using Phys;
 using SkiaSharp;
 
+TapeGenerationParseResult tapeParse = TapeGenerationCliParser.Parse(args);
+if (tapeParse.ShouldRun)
+{
+    if (tapeParse.Error is not null || tapeParse.Spec is null)
+    {
+        Console.WriteLine(tapeParse.Error ?? "Failed to parse tape generation options.");
+        ProjectionCliParser.PrintUsage();
+        Environment.Exit(1);
+    }
+
+    try
+    {
+        TapeBitmapGenerator.ExportTape(tapeParse.Spec);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Failed to generate tape: {ex.Message}");
+        Environment.Exit(1);
+    }
+
+    Console.WriteLine($"Generated tape(s) at: {Path.GetFullPath(tapeParse.Spec.OutputPath)}");
+    return;
+}
+
 if (TryRunTapeSample(args))
 {
     return;

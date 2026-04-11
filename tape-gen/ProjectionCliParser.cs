@@ -52,9 +52,17 @@ internal static class ProjectionCliParser
         return options;
     }
 
-    private static void PrintUsage()
+    internal static void PrintUsage()
     {
         Console.WriteLine("Usage:");
+        Console.WriteLine("  dotnet run --project ./tape-gen/tape-gen.csproj -- --generate-tape --segment-characters <chars> --main-characters <chars> [--tape-out ./tape.png]");
+        Console.WriteLine();
+        Console.WriteLine("Tape generation value sources (precedence):");
+        Console.WriteLine("  CLI flags > environment variables > --tape-config JSON > defaults");
+        Console.WriteLine("  Required values: SegmentCharacters, MainCharacters");
+        Console.WriteLine("  Env vars: CHRONOTAPE_SEGMENT_CHARACTERS, CHRONOTAPE_MAIN_CHARACTERS, CHRONOTAPE_OUTPUT_PATH, ...");
+        Console.WriteLine();
+        Console.WriteLine("Sample tape (documentation/testing):");
         Console.WriteLine("  dotnet run --project ./tape-gen/tape-gen.csproj -- --sample-tape [--sample-out ./tape.png]");
         Console.WriteLine();
         Console.WriteLine("Projection mode:");
