@@ -4,6 +4,16 @@ internal sealed class ProjectionOptions
 {
     public string FontPath { get; set; } = string.Empty;
     public string OutPath { get; set; } = string.Empty;
+    public string Text { get; set; } = "1234";
+    public int TextSize { get; set; } = 200;
+    public int SampleStep { get; set; } = 2;
+}
+
+internal sealed class ProjectionParseResult
+{
+    public bool ShouldRun { get; set; }
+    public ProjectionOptions? Options { get; set; }
+    public string? Error { get; set; }
 }
 
 internal sealed class CharacterBitmapSample

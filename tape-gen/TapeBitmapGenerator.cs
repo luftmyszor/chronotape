@@ -1,4 +1,5 @@
 using System.Numerics;
+using Phys;
 using SkiaSharp;
 
 internal sealed class TapeSpec
@@ -13,6 +14,7 @@ internal sealed class TapeSpec
     public int TopMarginPx { get; set; }
     public SKRectI DeadzoneRectPx { get; set; }
 
+    public string? FontPath { get; set; }
     public string FontFamily { get; set; } = "Digital-7";
     public SKFontStyle FontStyle { get; set; } = SKFontStyle.Normal;
     public SKColor ForegroundColor { get; set; } = SKColors.White;
@@ -38,6 +40,7 @@ internal static class TapeBitmapGenerator
     private const float ProjectionSlitSpreadXRatio = 0.25f;
     private const float ProjectionBaseOffsetYRatio = 0.08f;
     private const float ProjectionEpsilon = 1e-5f;
+    private const int ProjectionSampleStep = 1;
     private const float MinimumDisplayDistance = 1f;
     private const float MaxFontSearchUpperBound = 8192f;
 
@@ -54,7 +57,8 @@ internal static class TapeBitmapGenerator
             throw new ArgumentOutOfRangeException(nameof(slitIndex), $"slitIndex must be between 0 and {spec.SlitCount - 1}.");
         }
 
-        using SKTypeface typeface = ResolveTypeface(spec.FontFamily, spec.FontStyle);
+        bool useFontFile = !string.IsNullOrWhiteSpace(spec.FontPath);
+        using SKTypeface typeface = ResolveTypeface(spec);
 
         int width = spec.SegmentWidthPx;
         int height;
@@ -82,7 +86,14 @@ internal static class TapeBitmapGenerator
             char deadzoneChar = spec.SegmentCharacters[deadzoneIndex];
             SKRectI absoluteDeadzoneRect = OffsetRect(spec.DeadzoneRectPx, segmentRect.Left, segmentRect.Top);
             SKRectI deadzoneInnerRect = InsetRectOrThrow(absoluteDeadzoneRect, spec.DeadzonePaddingPx, "deadzone glyph");
-            DrawProjectedDeadzoneGlyph(bitmap, deadzoneChar, mainRect, deadzoneInnerRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+            if (useFontFile)
+            {
+                DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, deadzoneInnerRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+            }
+            else
+            {
+                DrawProjectedDeadzoneGlyphLegacy(bitmap, deadzoneChar, mainRect, deadzoneInnerRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+            }
 
             if (spec.DebugDrawRects)
             {
@@ -194,12 +205,22 @@ internal static class TapeBitmapGenerator
             throw new ArgumentException("FontFamily must not be empty.", nameof(spec));
         }
 
+        if (!string.IsNullOrWhiteSpace(spec.FontPath) && !File.Exists(spec.FontPath))
+        {
+            throw new ArgumentException($"Font file does not exist: {spec.FontPath}", nameof(spec));
+        }
+
         mainChars = spec.MainCharacters.AsSpan();
     }
 
-    private static SKTypeface ResolveTypeface(string fontFamily, SKFontStyle style)
+    private static SKTypeface ResolveTypeface(TapeSpec spec)
     {
-        return SKTypeface.FromFamilyName(fontFamily, style);
+        if (!string.IsNullOrWhiteSpace(spec.FontPath))
+        {
+            return SKTypeface.FromFile(spec.FontPath);
+        }
+
+        return SKTypeface.FromFamilyName(spec.FontFamily, spec.FontStyle);
     }
 
     private static void DrawMainGlyph(SKCanvas canvas, char glyph, SKRectI targetRect, SKTypeface typeface, SKColor color)
@@ -208,7 +229,7 @@ internal static class TapeBitmapGenerator
         DrawGlyphCenteredByCell(canvas, glyph, targetRect, typeface, color, fontSize);
     }
 
-    private static void DrawProjectedDeadzoneGlyph(
+    private static void DrawProjectedDeadzoneGlyphLegacy(
         SKBitmap tapeBitmap,
         char glyph,
         SKRectI sourceRect,
@@ -284,6 +305,72 @@ internal static class TapeBitmapGenerator
         }
     }
 
+    private static void DrawProjectedDeadzoneGlyphUsingPipeline(
+        SKBitmap tapeBitmap,
+        char glyph,
+        SKRectI sourceRect,
+        SKRectI deadzoneRect,
+        SKTypeface typeface,
+        SKColor color,
+        int slitIndex,
+        int slitCount)
+    {
+        using SKBitmap sourceMask = RenderGlyphMask(glyph, sourceRect.Width, sourceRect.Height, typeface);
+        List<SampledPixel> sampledPixels = SampleOpaquePixels(sourceMask, ProjectionSampleStep);
+        if (sampledPixels.Count == 0)
+        {
+            return;
+        }
+
+        float desiredScale = DeadzoneScaleFactor * MathF.Min(deadzoneRect.Width / (float)sourceMask.Width, deadzoneRect.Height / (float)sourceMask.Height);
+        if (desiredScale <= 0f)
+        {
+            throw new InvalidOperationException("Deadzone projection scale is invalid.");
+        }
+
+        float displayDistance = ProjectionLightDistance * ((1f / desiredScale) - 1f);
+        if (displayDistance <= MinimumDisplayDistance)
+        {
+            displayDistance = MinimumDisplayDistance;
+        }
+
+        double tiltRadians = ProjectionDisplayTiltDegrees * (Math.PI / 180.0);
+        var displayCenter = new Point3D(0, 0, displayDistance);
+        var displayNormal = new Vector3D(0, -Math.Sin(tiltRadians), Math.Cos(tiltRadians));
+        var displayUp = new Vector3D(0, Math.Cos(tiltRadians), Math.Sin(tiltRadians));
+        Frame displayFrame = new(displayCenter, displayNormal, displayUp, sourceMask.Width, sourceMask.Height);
+
+        double slitPosition = slitCount == 1 ? 0.0 : ((double)slitIndex / (slitCount - 1)) - 0.5;
+        double slitOffsetX = deadzoneRect.Width * ProjectionSlitSpreadXRatio * slitPosition;
+        Frame slitFrame = new(
+            new Point3D(slitOffsetX, 0, 0),
+            new Vector3D(0, 0, 1),
+            new Vector3D(0, 1, 0),
+            deadzoneRect.Width,
+            deadzoneRect.Height);
+
+        SlitProjectionResult projection = ProjectionPipeline.ProjectSingleSlit(
+            slitIndex,
+            sampledPixels,
+            displayFrame,
+            slitFrame,
+            new Point3D(0, 0, -ProjectionLightDistance));
+
+        bool[][] projectedBitmap = ProjectionPipeline.BuildSlitLocalBitmap(deadzoneRect.Width, deadzoneRect.Height, slitFrame, projection.Points);
+        for (int y = 0; y < projectedBitmap.Length; y++)
+        {
+            for (int x = 0; x < projectedBitmap[y].Length; x++)
+            {
+                if (!projectedBitmap[y][x])
+                {
+                    continue;
+                }
+
+                tapeBitmap.SetPixel(deadzoneRect.Left + x, deadzoneRect.Top + y, color);
+            }
+        }
+    }
+
     private static SKBitmap RenderGlyphMask(char glyph, int width, int height, SKTypeface typeface)
     {
         var bitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
@@ -293,6 +380,31 @@ internal static class TapeBitmapGenerator
         float fontSize = FindLargestFittingCellTextSize(width, height, typeface);
         DrawGlyphCenteredByCell(canvas, glyph, new SKRectI(0, 0, width, height), typeface, SKColors.White, fontSize);
         return bitmap;
+    }
+
+    private static List<SampledPixel> SampleOpaquePixels(SKBitmap bitmap, int step)
+    {
+        var sampled = new List<SampledPixel>();
+        for (int y = 0; y < bitmap.Height; y += step)
+        {
+            for (int x = 0; x < bitmap.Width; x += step)
+            {
+                if (bitmap.GetPixel(x, y).Alpha == 0)
+                {
+                    continue;
+                }
+
+                sampled.Add(new SampledPixel
+                {
+                    X = x,
+                    Y = y,
+                    BitmapWidth = bitmap.Width,
+                    BitmapHeight = bitmap.Height
+                });
+            }
+        }
+
+        return sampled;
     }
 
     private static float FindLargestFittingCellTextSize(int targetWidth, int targetHeight, SKTypeface typeface)

@@ -39,4 +39,47 @@ public sealed class TapeGenerationCliParserTests
         Assert.Contains("Missing required values", result.Error);
         Assert.Null(result.Spec);
     }
+
+    [Fact]
+    public void Parse_UsesFontPathFromCliWhenProvided()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "chronotape-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string fontPath = Path.Combine(tempDir, "fake.ttf");
+        File.WriteAllBytes(fontPath, [0x00]);
+
+        string[] args =
+        [
+            "--generate-tape",
+            "--segment-characters", "9876",
+            "--main-characters", "6789",
+            "--font", fontPath
+        ];
+
+        TapeGenerationParseResult result = TapeGenerationCliParser.Parse(args, _ => null);
+
+        Assert.True(result.ShouldRun);
+        Assert.Null(result.Error);
+        Assert.NotNull(result.Spec);
+        Assert.Equal(Path.GetFullPath(fontPath), result.Spec.FontPath);
+    }
+
+    [Fact]
+    public void Parse_FailsWhenConfiguredFontPathDoesNotExist()
+    {
+        string[] args =
+        [
+            "--generate-tape",
+            "--segment-characters", "9876",
+            "--main-characters", "6789",
+            "--font", "/definitely/missing/font.ttf"
+        ];
+
+        TapeGenerationParseResult result = TapeGenerationCliParser.Parse(args, _ => null);
+
+        Assert.True(result.ShouldRun);
+        Assert.NotNull(result.Error);
+        Assert.Contains("Font file does not exist", result.Error);
+        Assert.Null(result.Spec);
+    }
 }

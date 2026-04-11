@@ -31,6 +31,7 @@ internal static class TapeGenerationCliParser
         "--deadzone-bottom",
         "--main-padding",
         "--deadzone-padding",
+        "--font",
         "--font-family",
         "--debug-rects"
     ];
@@ -168,6 +169,20 @@ internal static class TapeGenerationCliParser
             config.FontFamily,
             "monospace")!;
 
+        string? fontPath = FirstNonEmpty(
+            GetArg(argsMap, "--font"),
+            environmentReader("CHRONOTAPE_FONT_PATH"),
+            config.FontPath);
+
+        if (!string.IsNullOrWhiteSpace(fontPath))
+        {
+            fontPath = Path.GetFullPath(fontPath);
+            if (!File.Exists(fontPath))
+            {
+                return ErrorResult($"Font file does not exist: {fontPath}");
+            }
+        }
+
         var spec = new TapeSpec
         {
             SegmentCharacters = segmentCharacters,
@@ -178,6 +193,7 @@ internal static class TapeGenerationCliParser
             SegmentHeightPx = segmentHeightPx,
             TopMarginPx = topMarginPx,
             DeadzoneRectPx = new SKRectI(deadzoneLeft, deadzoneTop, deadzoneRight, deadzoneBottom),
+            FontPath = fontPath,
             FontFamily = fontFamily,
             FontStyle = SKFontStyle.Normal,
             ForegroundColor = SKColors.White,
@@ -332,6 +348,7 @@ internal sealed class TapeConfigFile
     public int? SegmentHeightPx { get; set; }
     public int? TopMarginPx { get; set; }
     public TapeRectConfig? DeadzoneRectPx { get; set; }
+    public string? FontPath { get; set; }
     public string? FontFamily { get; set; }
     public int? MainPaddingPx { get; set; }
     public int? DeadzonePaddingPx { get; set; }

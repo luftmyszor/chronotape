@@ -28,6 +28,7 @@ dotnet run --project ./tape-gen/tape-gen.csproj -- \
   --generate-tape \
   --segment-characters 7391 \
   --main-characters 9137 \
+  --font /absolute/path/to/font.ttf \
   --offset 1 \
   --slit-count 2 \
   --tape-out ./tape.png
@@ -45,7 +46,69 @@ Required values (must be provided via CLI/env/config):
 - `SegmentCharacters` (`--segment-characters` / `CHRONOTAPE_SEGMENT_CHARACTERS`)
 - `MainCharacters` (`--main-characters` / `CHRONOTAPE_MAIN_CHARACTERS`)
 
+Font mode:
+
+- If `FontPath` (or `--font`) is provided, tape generation uses that font for both main glyphs and deadzone glyphs.
+- Deadzone glyphs are generated through the projection pipeline and then composited into the deadzone region.
+- If no font is provided, legacy generation remains the default.
+- Font path source precedence follows the same rule (`CLI > env > config > defaults`) using:
+  - `--font`
+  - `CHRONOTAPE_FONT_PATH`
+  - `FontPath` in `--tape-config` JSON
+
 If required values are missing, tape generation fails with a clear error instead of falling back to sample values.
+
+If a font path is provided but invalid, generation fails with `Font file does not exist: ...`.
+
+### Generate using config only (including `FontPath`)
+
+`tape-config.json`:
+
+```json
+{
+  "SegmentCharacters": "7391",
+  "MainCharacters": "9137",
+  "Offset": 1,
+  "SlitCount": 2,
+  "FontPath": "/absolute/path/to/font.ttf",
+  "OutputPath": "./tape-font.png"
+}
+```
+
+Run:
+
+```bash
+dotnet run --project ./tape-gen/tape-gen.csproj -- \
+  --generate-tape \
+  --tape-config ./tape-config.json
+```
+
+### Generate using config + CLI overrides
+
+```bash
+dotnet run --project ./tape-gen/tape-gen.csproj -- \
+  --generate-tape \
+  --tape-config ./tape-config.json \
+  --font /absolute/path/to/override-font.otf \
+  --offset 3 \
+  --tape-out ./tape-overridden.png
+```
+
+### Projection debug mode
+
+Use debug mode only when tuning geometry/projection artifacts:
+
+```bash
+dotnet run --project ./tape-gen/tape-gen.csproj -- \
+  --projection-debug \
+  --font /absolute/path/to/font.ttf \
+  --out ./projection-debug
+```
+
+This writes intermediate artifacts such as:
+
+- `./projection-debug/rendered/*.png` (sampled rendered glyph bitmaps)
+- `./projection-debug/projected/slit-*/*.png` (projected glyph bitmaps per slit)
 
 ### Sample CLI (documentation/testing)
 
