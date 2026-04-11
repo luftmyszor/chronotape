@@ -486,22 +486,16 @@ internal static class TapeGenerationCliParser
         out int value,
         out string? error)
     {
-        string? cliPx = GetArg(argsMap, pxArgumentName);
-        if (!string.IsNullOrWhiteSpace(cliPx))
-        {
-            return TryParseInteger(cliPx, $"{pxArgumentName} / {pxEnvironmentName}", out value, out error);
-        }
-
         string? cliMm = GetArg(argsMap, mmArgumentName);
         if (!string.IsNullOrWhiteSpace(cliMm))
         {
             return TryConvertMillimetersToPixels(cliMm, mmArgumentName, dpi, out value, out error);
         }
 
-        string? envPx = environmentReader(pxEnvironmentName);
-        if (!string.IsNullOrWhiteSpace(envPx))
+        string? cliPx = GetArg(argsMap, pxArgumentName);
+        if (!string.IsNullOrWhiteSpace(cliPx))
         {
-            return TryParseInteger(envPx, $"{pxArgumentName} / {pxEnvironmentName}", out value, out error);
+            return TryParseInteger(cliPx, $"{pxArgumentName} / {pxEnvironmentName}", out value, out error);
         }
 
         string? envMm = environmentReader(mmEnvironmentName);
@@ -510,16 +504,22 @@ internal static class TapeGenerationCliParser
             return TryConvertMillimetersToPixels(envMm, mmEnvironmentName, dpi, out value, out error);
         }
 
-        if (configPxValue.HasValue)
+        string? envPx = environmentReader(pxEnvironmentName);
+        if (!string.IsNullOrWhiteSpace(envPx))
         {
-            value = configPxValue.Value;
-            error = null;
-            return true;
+            return TryParseInteger(envPx, $"{pxArgumentName} / {pxEnvironmentName}", out value, out error);
         }
 
         if (configMmValue.HasValue)
         {
             return TryConvertMillimetersToPixels(configMmValue.Value, configMmLabel, dpi, out value, out error);
+        }
+
+        if (configPxValue.HasValue)
+        {
+            value = configPxValue.Value;
+            error = null;
+            return true;
         }
 
         value = defaultValue;

@@ -42,7 +42,7 @@ Input precedence:
 4. Built-in non-sample defaults (layout/output defaults only)
 
 For layout values, each field now supports both pixel and millimeter inputs.
-Within the same source (CLI, env, or config), `px` wins over `mm` if both are present.
+Within the same source (CLI, env, or config), `mm` wins over `px` if both are present.
 
 Required values (must be provided via CLI/env/config):
 

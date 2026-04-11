@@ -120,7 +120,7 @@ public sealed class TapeGenerationCliParserTests
     }
 
     [Fact]
-    public void Parse_PrefersPixelValueOverMillimeterValueWithinSameSource()
+    public void Parse_PrefersMillimeterValueOverPixelValueWithinSameSource()
     {
         string[] args =
         [
@@ -137,7 +137,7 @@ public sealed class TapeGenerationCliParserTests
         Assert.True(result.ShouldRun);
         Assert.Null(result.Error);
         Assert.NotNull(result.Spec);
-        Assert.Equal(123, result.Spec.SegmentWidthPx);
+        Assert.Equal(600, result.Spec.SegmentWidthPx);
     }
 
     [Fact]
