@@ -112,38 +112,6 @@ public sealed class TapeBitmapGeneratorTests
     }
 
     [Fact]
-    public void GenerateTapeBitmap_TrimsMainGlyphHorizontallySoBoundsFollowConfiguredXPadding()
-    {
-        var spec = new TapeSpec
-        {
-            SegmentCharacters = "1",
-            MainCharacters = "1",
-            Offset = 0,
-            SlitCount = 1,
-            SegmentWidthPx = 140,
-            SegmentHeightPx = 210,
-            TopMarginPx = 0,
-            SlitWidthPx = 20,
-            SlitHeightPx = 20,
-            SlitCenterYOffsetPx = 0,
-            FontFamily = "monospace",
-            FontStyle = SKFontStyle.Normal,
-            ForegroundColor = SKColors.White,
-            BackgroundColor = SKColors.Black,
-            MainPaddingXPx = 10,
-            MainPaddingYPx = 20,
-            DeadzonePaddingXPx = 0,
-            DeadzonePaddingYPx = 0
-        };
-
-        using SKBitmap bitmap = TapeBitmapGenerator.GenerateTapeBitmap(spec);
-        SKRectI opaqueBounds = FindOpaqueBounds(bitmap);
-
-        Assert.True(opaqueBounds.Left <= spec.MainPaddingXPx + 1);
-        Assert.True(opaqueBounds.Right >= (spec.SegmentWidthPx - spec.MainPaddingXPx) - 1);
-    }
-
-    [Fact]
     public void CropToOpaqueBounds_IgnoresLowAlphaFringePixels()
     {
         using var bitmap = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
@@ -160,25 +128,6 @@ public sealed class TapeBitmapGeneratorTests
         using SKBitmap cropped = TapeBitmapGenerator.CropToOpaqueBounds(bitmap, "test");
         Assert.Equal(3, cropped.Width);
         Assert.Equal(3, cropped.Height);
-    }
-
-    [Fact]
-    public void CropToOpaqueBounds_WhenFixedYBoundsProvided_UsesThoseYBoundsAndCropsXTight()
-    {
-        using var bitmap = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
-        bitmap.Erase(SKColors.Transparent);
-        for (int y = 4; y <= 6; y++)
-        {
-            for (int x = 4; x <= 6; x++)
-            {
-                bitmap.SetPixel(x, y, SKColors.White);
-            }
-        }
-
-        // Fix Y to rows 2-8 (wider than the natural glyph rows 4-6); X should still be tight.
-        using SKBitmap cropped = TapeBitmapGenerator.CropToOpaqueBounds(bitmap, "test", fixedMinY: 2, fixedMaxY: 8);
-        Assert.Equal(3, cropped.Width);  // X still cropped tight to cols 4-6
-        Assert.Equal(7, cropped.Height); // Y fixed: rows 2-8 inclusive
     }
 
     private static SKRectI BuildApertureRect(TapeSpec spec)

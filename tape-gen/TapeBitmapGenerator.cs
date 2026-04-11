@@ -77,17 +77,6 @@ internal static class TapeBitmapGenerator
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(spec.BackgroundColor);
 
-        // Compute reference Y bounds once from the full-height reference character so all
-        // main glyphs use an identical vertical crop extent.
-        SKRectI referenceSegmentRect = new(
-            0,
-            spec.TopMarginPx,
-            spec.SegmentWidthPx,
-            spec.TopMarginPx + spec.SegmentHeightPx);
-        SKRectI referenceMainRect = InsetRectOrThrow(referenceSegmentRect, spec.MainPaddingXPx, spec.MainPaddingYPx, "main glyph");
-        using SKBitmap referenceMask = RenderGlyphMask(CellReferenceCharacter, referenceMainRect.Width, referenceMainRect.Height, typeface);
-        (int refMinY, int refMaxY) = GetVerticalOpaqueBounds(referenceMask);
-
         for (int i = 0; i < segmentCount; i++)
         {
             SKRectI segmentRect = new(
@@ -97,7 +86,7 @@ internal static class TapeBitmapGenerator
                 spec.TopMarginPx + ((i + 1) * spec.SegmentHeightPx));
 
             SKRectI mainRect = InsetRectOrThrow(segmentRect, spec.MainPaddingXPx, spec.MainPaddingYPx, "main glyph");
-            DrawMainGlyph(canvas, mainChars[i], mainRect, typeface, spec.ForegroundColor, refMinY, refMaxY);
+            DrawMainGlyph(canvas, mainChars[i], mainRect, typeface, spec.ForegroundColor);
 
             int deadzoneIndex = (i + spec.Offset) % segmentCount;
             char deadzoneChar = spec.SegmentCharacters[deadzoneIndex];
@@ -252,17 +241,10 @@ internal static class TapeBitmapGenerator
         return SKTypeface.FromFamilyName(spec.FontFamily, spec.FontStyle);
     }
 
-    private static void DrawMainGlyph(SKCanvas canvas, char glyph, SKRectI targetRect, SKTypeface typeface, SKColor color, int refMinY, int refMaxY)
+    private static void DrawMainGlyph(SKCanvas canvas, char glyph, SKRectI targetRect, SKTypeface typeface, SKColor color)
     {
-        using SKBitmap sourceMask = RenderGlyphMask(glyph, targetRect.Width, targetRect.Height, typeface);
-        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask, "main", fixedMinY: refMinY, fixedMaxY: refMaxY);
-        using var paint = new SKPaint
-        {
-            IsAntialias = true,
-            FilterQuality = SKFilterQuality.High,
-            ColorFilter = SKColorFilter.CreateBlendMode(color, SKBlendMode.SrcIn)
-        };
-        canvas.DrawBitmap(sourceMaskTight, targetRect, paint);
+        float fontSize = FindLargestFittingCellTextSize(targetRect.Width, targetRect.Height, typeface);
+        DrawGlyphCenteredByCell(canvas, glyph, targetRect, typeface, color, fontSize);
     }
 
     private static void DrawProjectedDeadzoneGlyphLegacy(
@@ -432,12 +414,12 @@ internal static class TapeBitmapGenerator
         return bitmap;
     }
 
-    internal static SKBitmap CropToOpaqueBounds(SKBitmap bitmap, string glyphKind, int? fixedMinY = null, int? fixedMaxY = null)
+    internal static SKBitmap CropToOpaqueBounds(SKBitmap bitmap, string glyphKind)
     {
         int minX = bitmap.Width;
         int maxX = -1;
-        int minY = fixedMinY ?? bitmap.Height;
-        int maxY = fixedMaxY ?? -1;
+        int minY = bitmap.Height;
+        int maxY = -1;
 
         for (int y = 0; y < bitmap.Height; y++)
         {
@@ -450,15 +432,8 @@ internal static class TapeBitmapGenerator
 
                 minX = Math.Min(minX, x);
                 maxX = Math.Max(maxX, x);
-                if (fixedMinY == null)
-                {
-                    minY = Math.Min(minY, y);
-                }
-
-                if (fixedMaxY == null)
-                {
-                    maxY = Math.Max(maxY, y);
-                }
+                minY = Math.Min(minY, y);
+                maxY = Math.Max(maxY, y);
             }
         }
 
@@ -475,29 +450,6 @@ internal static class TapeBitmapGenerator
         canvas.Clear(SKColors.Transparent);
         canvas.DrawBitmap(bitmap, new SKRectI(minX, minY, maxX + 1, maxY + 1), new SKRectI(0, 0, width, height));
         return cropped;
-    }
-
-    private static (int MinY, int MaxY) GetVerticalOpaqueBounds(SKBitmap bitmap)
-    {
-        int minY = bitmap.Height;
-        int maxY = -1;
-        for (int y = 0; y < bitmap.Height; y++)
-        {
-            for (int x = 0; x < bitmap.Width; x++)
-            {
-                if (!IsSignificantMaskPixel(bitmap.GetPixel(x, y)))
-                {
-                    continue;
-                }
-
-                minY = Math.Min(minY, y);
-                maxY = Math.Max(maxY, y);
-            }
-        }
-
-        return maxY < minY
-            ? throw new InvalidOperationException("Reference glyph mask had no opaque pixels.")
-            : (minY, maxY);
     }
 
     private static List<SampledPixel> SampleOpaquePixels(SKBitmap bitmap, int step)
