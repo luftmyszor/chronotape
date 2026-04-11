@@ -129,6 +129,11 @@ internal static class ProjectionDebugRunner
     private static Vector3D NormalizeVector(Vector3D vector)
     {
         double length = Math.Sqrt((vector.X * vector.X) + (vector.Y * vector.Y) + (vector.Z * vector.Z));
+        if (length <= 0d)
+        {
+            throw new InvalidOperationException("World geometry vector cannot be zero.");
+        }
+
         return new Vector3D(vector.X / length, vector.Y / length, vector.Z / length);
     }
 
