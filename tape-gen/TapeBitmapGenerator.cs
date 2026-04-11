@@ -38,6 +38,8 @@ internal static class TapeBitmapGenerator
     private const float ProjectionSlitSpreadXRatio = 0.25f;
     private const float ProjectionBaseOffsetYRatio = 0.08f;
     private const float ProjectionEpsilon = 1e-5f;
+    private const float MinimumDisplayDistance = 1f;
+    private const float MaxFontSearchUpperBound = 8192f;
 
     public static SKBitmap GenerateTapeBitmap(TapeSpec spec)
     {
@@ -55,7 +57,11 @@ internal static class TapeBitmapGenerator
         using SKTypeface typeface = ResolveTypeface(spec.FontFamily, spec.FontStyle);
 
         int width = spec.SegmentWidthPx;
-        int height = checked(spec.TopMarginPx + (segmentCount * spec.SegmentHeightPx));
+        int height;
+        checked
+        {
+            height = spec.TopMarginPx + (segmentCount * spec.SegmentHeightPx);
+        }
 
         var bitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using var canvas = new SKCanvas(bitmap);
@@ -224,9 +230,9 @@ internal static class TapeBitmapGenerator
         }
 
         float displayDistance = ProjectionLightDistance * ((1f / desiredScale) - 1f);
-        if (displayDistance <= 1f)
+        if (displayDistance <= MinimumDisplayDistance)
         {
-            displayDistance = 1f;
+            displayDistance = MinimumDisplayDistance;
         }
 
         float tiltRadians = ProjectionDisplayTiltDegrees * (MathF.PI / 180f);
@@ -292,7 +298,9 @@ internal static class TapeBitmapGenerator
     private static float FindLargestFittingCellTextSize(int targetWidth, int targetHeight, SKTypeface typeface)
     {
         float low = MinFontSizePx;
-        float high = Math.Max(targetHeight * FontSearchUpperBoundMultiplier, MinFontSizePx);
+        float high = Math.Min(
+            Math.Max(targetHeight * FontSearchUpperBoundMultiplier, MinFontSizePx),
+            MaxFontSearchUpperBound);
 
         if (!CellFitsInTarget(MinFontSizePx, targetWidth, targetHeight, typeface))
         {

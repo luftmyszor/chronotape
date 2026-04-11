@@ -11,7 +11,7 @@
 ### `TapeSpec` behavior
 
 - `SegmentCharacters` length defines segment count `N`.
-- **Main character rule (Option A):** `MainCharacters` is required and must have exactly length `N`.
+- Main character rule: `MainCharacters` is required and must have exactly length `N`.
 - Deadzone mapping per segment index `i`: `SegmentCharacters[(i + Offset) % N]`.
 - Deadzone rectangle is configured per segment via `DeadzoneRectPx`.
 - Main glyphs are centered by fixed 7-segment cell center (`'8'` reference cell), not per-glyph visual bounds.
