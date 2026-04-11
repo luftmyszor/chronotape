@@ -13,7 +13,7 @@
 - `SegmentCharacters` length defines segment count `N`.
 - Main character rule: `MainCharacters` is required and must have exactly length `N`.
 - Deadzone mapping per segment index `i`: `SegmentCharacters[(i + Offset) % N]`.
-- Deadzone rectangle is configured per segment via `DeadzoneRectPx`.
+- Deadzone aperture is configured per segment via slit geometry (`SlitWidthPx`, `SlitHeightPx`, `SlitCenterYOffsetPx`).
 - Main glyphs are centered by fixed 7-segment cell center (`'8'` reference cell), not per-glyph visual bounds.
 - Deadzone glyphs are projected into fixed slit positions (not re-centered per glyph).
 - If `SlitCount > 1`, `ExportTape` writes one file per slit using suffixes:
@@ -76,9 +76,9 @@ Supported geometry config fields:
 - `Dpi`
 - `SegmentWidthMm`, `SegmentHeightMm`, `TopMarginMm`
 - `MainPaddingMm`, `DeadzonePaddingMm`
-- `DeadzoneRectMm` (`Left`, `Top`, `Right`, `Bottom`)
+- `SlitWidthMm`, `SlitHeightMm`, `SlitCenterYOffsetMm`
 
-`DeadzoneRectMm` defines the projection aperture. `DeadzonePaddingMm` is applied only as final clipping inside that aperture.
+`SlitWidthMm`/`SlitHeightMm` define the projection aperture size directly (same as slit size). `SlitCenterYOffsetMm` controls vertical placement relative to segment center; horizontal placement is always centered. `DeadzonePaddingMm` is applied only as final clipping inside that aperture.
 
 ### Generate using config only (including `FontPath`)
 
@@ -96,7 +96,9 @@ Supported geometry config fields:
   "TopMarginMm": 12.7,
   "MainPaddingMm": 0.5,
   "DeadzonePaddingMm": 0.5,
-  "DeadzoneRectMm": { "Left": 2.54, "Top": 10.16, "Right": 20.32, "Bottom": 40.64 },
+  "SlitWidthMm": 17.78,
+  "SlitHeightMm": 30.48,
+  "SlitCenterYOffsetMm": 7.62,
   "FontPath": "/absolute/path/to/font.ttf",
   "OutputPath": "./tape-font.png"
 }

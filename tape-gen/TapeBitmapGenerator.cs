@@ -12,7 +12,9 @@ internal sealed class TapeSpec
     public int SegmentWidthPx { get; set; }
     public int SegmentHeightPx { get; set; }
     public int TopMarginPx { get; set; }
-    public SKRectI DeadzoneRectPx { get; set; }
+    public int SlitWidthPx { get; set; }
+    public int SlitHeightPx { get; set; }
+    public int SlitCenterYOffsetPx { get; set; }
 
     public string? FontPath { get; set; }
     public string FontFamily { get; set; } = "Digital-7";
@@ -85,7 +87,7 @@ internal static class TapeBitmapGenerator
 
             int deadzoneIndex = (i + spec.Offset) % segmentCount;
             char deadzoneChar = spec.SegmentCharacters[deadzoneIndex];
-            SKRectI absoluteDeadzoneRect = OffsetRect(spec.DeadzoneRectPx, segmentRect.Left, segmentRect.Top);
+            SKRectI absoluteDeadzoneRect = ComputeDeadzoneApertureRect(segmentRect, spec);
             SKRectI deadzoneClipRect = InsetRectOrThrow(absoluteDeadzoneRect, spec.DeadzonePaddingPx, "deadzone glyph");
             if (useFontFile)
             {
@@ -194,17 +196,20 @@ internal static class TapeBitmapGenerator
             throw new ArgumentException("MainPaddingPx and DeadzonePaddingPx must be >= 0.", nameof(spec));
         }
 
-        if (spec.DeadzoneRectPx.Width <= 0 || spec.DeadzoneRectPx.Height <= 0)
+        if (spec.SlitWidthPx <= 0 || spec.SlitHeightPx <= 0)
         {
-            throw new ArgumentException("DeadzoneRectPx must have positive width and height.", nameof(spec));
+            throw new ArgumentException("SlitWidthPx and SlitHeightPx must be > 0.", nameof(spec));
         }
 
-        if (spec.DeadzoneRectPx.Left < 0
-            || spec.DeadzoneRectPx.Top < 0
-            || spec.DeadzoneRectPx.Right > spec.SegmentWidthPx
-            || spec.DeadzoneRectPx.Bottom > spec.SegmentHeightPx)
+        if (spec.SlitWidthPx > spec.SegmentWidthPx || spec.SlitHeightPx > spec.SegmentHeightPx)
         {
-            throw new ArgumentException("DeadzoneRectPx must fit inside a segment rectangle.", nameof(spec));
+            throw new ArgumentException("SlitWidthPx and SlitHeightPx must fit inside a segment rectangle.", nameof(spec));
+        }
+
+        SKRectI localApertureRect = ComputeDeadzoneApertureRect(new SKRectI(0, 0, spec.SegmentWidthPx, spec.SegmentHeightPx), spec);
+        if (localApertureRect.Top < 0 || localApertureRect.Bottom > spec.SegmentHeightPx)
+        {
+            throw new ArgumentException("SlitCenterYOffsetPx places slit aperture outside segment bounds.", nameof(spec));
         }
 
         if (string.IsNullOrWhiteSpace(spec.FontFamily))
@@ -509,8 +514,12 @@ internal static class TapeBitmapGenerator
         return insetRect;
     }
 
-    private static SKRectI OffsetRect(SKRectI rect, int dx, int dy) =>
-        new(rect.Left + dx, rect.Top + dy, rect.Right + dx, rect.Bottom + dy);
+    private static SKRectI ComputeDeadzoneApertureRect(SKRectI segmentRect, TapeSpec spec)
+    {
+        int left = segmentRect.Left + ((segmentRect.Width - spec.SlitWidthPx) / 2);
+        int top = segmentRect.Top + ((segmentRect.Height - spec.SlitHeightPx) / 2) + spec.SlitCenterYOffsetPx;
+        return new SKRectI(left, top, left + spec.SlitWidthPx, top + spec.SlitHeightPx);
+    }
 
     private static void SaveSingleBitmap(TapeSpec spec, SKEncodedImageFormat format, string fullPath, int slitIndex, bool writeSuffix)
     {

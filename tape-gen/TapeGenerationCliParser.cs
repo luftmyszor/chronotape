@@ -23,6 +23,9 @@ internal static class TapeGenerationCliParser
     private const double DefaultDeadzoneTopMm = 37.592d;
     private const double DefaultDeadzoneRightMm = 22.352d;
     private const double DefaultDeadzoneBottomMm = 46.736d;
+    private const double DefaultSlitWidthMm = 9.144d;
+    private const double DefaultSlitHeightMm = 9.144d;
+    private const double DefaultSlitCenterYOffsetMm = 15.494d;
     private static readonly HashSet<string> SupportedArguments =
     [
         GenerateFlag,
@@ -214,6 +217,54 @@ internal static class TapeGenerationCliParser
             return ErrorResult(deadzoneBottomError!);
         }
 
+        int legacySlitWidthPx = deadzoneRight - deadzoneLeft;
+        int legacySlitHeightPx = deadzoneBottom - deadzoneTop;
+        int legacySlitCenterYOffsetPx = ((deadzoneTop + deadzoneBottom) - segmentHeightPx) / 2;
+
+        if (!TryResolveDimensionPxFromConfig(
+            config.SlitWidthMm,
+            "SlitWidthMm",
+            defaultValueMm: DefaultSlitWidthMm,
+            dpi,
+            out int slitWidthPx,
+            out string? slitWidthError))
+        {
+            return ErrorResult(slitWidthError!);
+        }
+
+        if (!TryResolveDimensionPxFromConfig(
+            config.SlitHeightMm,
+            "SlitHeightMm",
+            defaultValueMm: DefaultSlitHeightMm,
+            dpi,
+            out int slitHeightPx,
+            out string? slitHeightError))
+        {
+            return ErrorResult(slitHeightError!);
+        }
+
+        if (config.DeadzoneRectMm is not null)
+        {
+            slitWidthPx = config.SlitWidthMm.HasValue ? slitWidthPx : legacySlitWidthPx;
+            slitHeightPx = config.SlitHeightMm.HasValue ? slitHeightPx : legacySlitHeightPx;
+        }
+
+        if (!TryResolveDimensionPxFromConfig(
+            config.SlitCenterYOffsetMm,
+            "SlitCenterYOffsetMm",
+            defaultValueMm: DefaultSlitCenterYOffsetMm,
+            dpi,
+            out int slitCenterYOffsetPx,
+            out string? slitCenterYOffsetError))
+        {
+            return ErrorResult(slitCenterYOffsetError!);
+        }
+
+        if (config.DeadzoneRectMm is not null && !config.SlitCenterYOffsetMm.HasValue)
+        {
+            slitCenterYOffsetPx = legacySlitCenterYOffsetPx;
+        }
+
         bool debugRects = ResolveBool(
             ResolveBoolString(GetArg(argsMap, "--debug-rects"), environmentReader("CHRONOTAPE_DEBUG_RECTS")),
             config.DebugDrawRects,
@@ -259,7 +310,9 @@ internal static class TapeGenerationCliParser
             SegmentWidthPx = segmentWidthPx,
             SegmentHeightPx = segmentHeightPx,
             TopMarginPx = topMarginPx,
-            DeadzoneRectPx = new SKRectI(deadzoneLeft, deadzoneTop, deadzoneRight, deadzoneBottom),
+            SlitWidthPx = slitWidthPx,
+            SlitHeightPx = slitHeightPx,
+            SlitCenterYOffsetPx = slitCenterYOffsetPx,
             FontPath = fontPath,
             FontFamily = fontFamily,
             FontStyle = SKFontStyle.Normal,
@@ -461,6 +514,9 @@ internal sealed class TapeConfigFile
     public double? SegmentWidthMm { get; set; }
     public double? SegmentHeightMm { get; set; }
     public double? TopMarginMm { get; set; }
+    public double? SlitWidthMm { get; set; }
+    public double? SlitHeightMm { get; set; }
+    public double? SlitCenterYOffsetMm { get; set; }
     public TapeRectMmConfig? DeadzoneRectMm { get; set; }
     public string? FontPath { get; set; }
     public string? FontFamily { get; set; }
