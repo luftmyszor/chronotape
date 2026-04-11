@@ -1,7 +1,6 @@
 ﻿using Phys;
 
-// Example:
-// dotnet run --project ./tape-gen/tape-gen.csproj -- --font /absolute/path/to/font.ttf --text "1234" --fontSize 200 --sampleStep 2 --out ./projection-out --slitIndex 0
+
 
 const double DisplayedWidth = 150;
 const double DisplayedHeight = 300;
@@ -14,6 +13,12 @@ const double TapeTopHeightFromGround = 0;
 const string InputText = "1234";
 const int TextSize = 200;
 const int SampleStep = 2;
+const double TapeDistanceBetweenSegments = 5;
+const double TapeSegementWidth = 30;
+const double TapeSegmentHeight = 60;
+const double TapeDeadzoneCenterOffsetFromBottom = 20;
+const double TapeMargin = 5;
+
 
 ProjectionOptions? options = ProjectionCliParser.Parse(args);
 
