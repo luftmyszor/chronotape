@@ -55,6 +55,9 @@ internal static class ProjectionCliParser
     private static void PrintUsage()
     {
         Console.WriteLine("Usage:");
+        Console.WriteLine("  dotnet run --project ./tape-gen/tape-gen.csproj -- --sample-tape [--sample-out ./tape.png]");
+        Console.WriteLine();
+        Console.WriteLine("Projection mode:");
         Console.WriteLine("  dotnet run --project ./tape-gen/tape-gen.csproj -- \\");
         Console.WriteLine("    --font /absolute/path/to/font.ttf --out ./projection-out");
     }

@@ -1,5 +1,10 @@
-﻿using Phys;
+using Phys;
+using SkiaSharp;
 
+if (TryRunTapeSample(args))
+{
+    return;
+}
 
 
 const double DisplayedWidth = 150;
@@ -64,6 +69,47 @@ Console.WriteLine($"Generated {projectionsBySlitAndCharacter.Count} slit bitmap 
 Console.WriteLine("\nDone.");
 
 // --- Local helpers ---
+
+bool TryRunTapeSample(string[] cliArgs)
+{
+    if (!cliArgs.Contains("--sample-tape", StringComparer.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    string outputPath = "./tape.png";
+    for (int i = 0; i < cliArgs.Length - 1; i++)
+    {
+        if (string.Equals(cliArgs[i], "--sample-out", StringComparison.OrdinalIgnoreCase))
+        {
+            outputPath = cliArgs[i + 1];
+            break;
+        }
+    }
+
+    var sample = new TapeSpec
+    {
+        SegmentCharacters = "1234",
+        MainCharacters = "1234",
+        Offset = 2,
+        SlitCount = 4,
+        SegmentWidthPx = 140,
+        SegmentHeightPx = 210,
+        TopMarginPx = 30,
+        DeadzoneRectPx = new SKRectI(52, 148, 88, 184),
+        FontFamily = "monospace",
+        FontStyle = SKFontStyle.Normal,
+        ForegroundColor = SKColors.White,
+        BackgroundColor = SKColors.Black,
+        MainPaddingPx = 8,
+        DeadzonePaddingPx = 2,
+        OutputPath = outputPath
+    };
+
+    TapeBitmapGenerator.ExportTape(sample);
+    Console.WriteLine($"Generated sample tape(s) at: {Path.GetFullPath(outputPath)}");
+    return true;
+}
 
 List<Frame> BuildSlits(Point3D origin, Vector3D direction, Vector3D normal)
 {
