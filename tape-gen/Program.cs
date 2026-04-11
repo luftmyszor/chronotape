@@ -54,8 +54,8 @@ if (characterBitmaps.Count == 0)
     return;
 }
 
-List<List<CharacterSlitBitmap>> slitCharacterBitmaps = ProjectBitmapsForAllSlits(characterBitmaps, slits, displayedSegments, lightSources);
-Console.WriteLine($"Generated {slitCharacterBitmaps.Count} slit bitmap lists.");
+List<List<CharacterSlitBitmap>> projectionsBySlitAndCharacter = ProjectBitmapsForAllSlits(characterBitmaps, slits, displayedSegments, lightSources);
+Console.WriteLine($"Generated {projectionsBySlitAndCharacter.Count} slit bitmap lists.");
 Console.WriteLine("\nDone.");
 
 // --- Local helpers ---
