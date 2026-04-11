@@ -105,8 +105,10 @@ public sealed class TapeGenerationCliParserTests
           "SegmentWidthMm": 25.4,
           "SegmentHeightMm": 50.8,
           "TopMarginMm": 12.7,
-          "MainPaddingMm": 0.5,
-          "DeadzonePaddingMm": 0.5,
+          "MainHorizontalPaddingMm": 0.5,
+          "MainVerticalPaddingMm": 0.75,
+          "DeadzoneHorizontalPaddingMm": 0.25,
+          "DeadzoneVerticalPaddingMm": 0.5,
           "SlitCenterYOffsetMm": 7.62
         }
         """);
@@ -127,8 +129,10 @@ public sealed class TapeGenerationCliParserTests
         Assert.Equal(600, result.Spec.SegmentWidthPx);
         Assert.Equal(1200, result.Spec.SegmentHeightPx);
         Assert.Equal(300, result.Spec.TopMarginPx);
-        Assert.Equal(12, result.Spec.MainPaddingPx);
-        Assert.Equal(12, result.Spec.DeadzonePaddingPx);
+        Assert.Equal(12, result.Spec.MainPaddingXPx);
+        Assert.Equal(18, result.Spec.MainPaddingYPx);
+        Assert.Equal(6, result.Spec.DeadzonePaddingXPx);
+        Assert.Equal(12, result.Spec.DeadzonePaddingYPx);
         Assert.Equal(420, result.Spec.SlitWidthPx);
         Assert.Equal(720, result.Spec.SlitHeightPx);
         Assert.Equal(180, result.Spec.SlitCenterYOffsetPx);
@@ -175,8 +179,10 @@ public sealed class TapeGenerationCliParserTests
         Assert.Equal(140, result.Spec.SegmentWidthPx);
         Assert.Equal(210, result.Spec.SegmentHeightPx);
         Assert.Equal(30, result.Spec.TopMarginPx);
-        Assert.Equal(8, result.Spec.MainPaddingPx);
-        Assert.Equal(2, result.Spec.DeadzonePaddingPx);
+        Assert.Equal(8, result.Spec.MainPaddingXPx);
+        Assert.Equal(8, result.Spec.MainPaddingYPx);
+        Assert.Equal(2, result.Spec.DeadzonePaddingXPx);
+        Assert.Equal(2, result.Spec.DeadzonePaddingYPx);
         Assert.Equal(36, result.Spec.SlitWidthPx);
         Assert.Equal(36, result.Spec.SlitHeightPx);
         Assert.Equal(86, result.Spec.SlitCenterYOffsetPx);

@@ -26,8 +26,10 @@ public sealed class TapeBitmapGeneratorTests
             FontStyle = SKFontStyle.Normal,
             ForegroundColor = SKColors.White,
             BackgroundColor = SKColors.Black,
-            MainPaddingPx = 8,
-            DeadzonePaddingPx = 0
+            MainPaddingXPx = 8,
+            MainPaddingYPx = 8,
+            DeadzonePaddingXPx = 0,
+            DeadzonePaddingYPx = 0
         };
 
         var clippedSpec = new TapeSpec
@@ -46,8 +48,10 @@ public sealed class TapeBitmapGeneratorTests
             FontStyle = baselineSpec.FontStyle,
             ForegroundColor = baselineSpec.ForegroundColor,
             BackgroundColor = baselineSpec.BackgroundColor,
-            MainPaddingPx = baselineSpec.MainPaddingPx,
-            DeadzonePaddingPx = 4
+            MainPaddingXPx = baselineSpec.MainPaddingXPx,
+            MainPaddingYPx = baselineSpec.MainPaddingYPx,
+            DeadzonePaddingXPx = 4,
+            DeadzonePaddingYPx = 4
         };
 
         using SKBitmap baseline = TapeBitmapGenerator.GenerateTapeBitmap(baselineSpec);
@@ -55,10 +59,10 @@ public sealed class TapeBitmapGeneratorTests
 
         SKRectI apertureRect = BuildApertureRect(baselineSpec);
         SKRectI clipRect = new(
-            apertureRect.Left + clippedSpec.DeadzonePaddingPx,
-            apertureRect.Top + clippedSpec.DeadzonePaddingPx,
-            apertureRect.Right - clippedSpec.DeadzonePaddingPx,
-            apertureRect.Bottom - clippedSpec.DeadzonePaddingPx);
+            apertureRect.Left + clippedSpec.DeadzonePaddingXPx,
+            apertureRect.Top + clippedSpec.DeadzonePaddingYPx,
+            apertureRect.Right - clippedSpec.DeadzonePaddingXPx,
+            apertureRect.Bottom - clippedSpec.DeadzonePaddingYPx);
 
         for (int y = clipRect.Top; y < clipRect.Bottom; y++)
         {
@@ -107,6 +111,40 @@ public sealed class TapeBitmapGeneratorTests
         Assert.Equal(((wideSpec.SegmentWidthPx - 40) / 2) + 1, wideBounds.Left);
     }
 
+    [Fact]
+    public void GenerateTapeBitmap_TrimsMainGlyphSoBoundsFollowConfiguredPadding()
+    {
+        var spec = new TapeSpec
+        {
+            SegmentCharacters = " ",
+            MainCharacters = "1",
+            Offset = 0,
+            SlitCount = 1,
+            SegmentWidthPx = 140,
+            SegmentHeightPx = 210,
+            TopMarginPx = 0,
+            SlitWidthPx = 20,
+            SlitHeightPx = 20,
+            SlitCenterYOffsetPx = 0,
+            FontFamily = "monospace",
+            FontStyle = SKFontStyle.Normal,
+            ForegroundColor = SKColors.White,
+            BackgroundColor = SKColors.Black,
+            MainPaddingXPx = 10,
+            MainPaddingYPx = 20,
+            DeadzonePaddingXPx = 0,
+            DeadzonePaddingYPx = 0
+        };
+
+        using SKBitmap bitmap = TapeBitmapGenerator.GenerateTapeBitmap(spec);
+        SKRectI opaqueBounds = FindOpaqueBounds(bitmap);
+
+        Assert.True(opaqueBounds.Left <= spec.MainPaddingXPx + 1);
+        Assert.True(opaqueBounds.Top <= spec.MainPaddingYPx + 1);
+        Assert.True(opaqueBounds.Right >= (spec.SegmentWidthPx - spec.MainPaddingXPx) - 1);
+        Assert.True(opaqueBounds.Bottom >= (spec.SegmentHeightPx - spec.MainPaddingYPx) - 1);
+    }
+
     private static SKRectI BuildApertureRect(TapeSpec spec)
     {
         int left = (spec.SegmentWidthPx - spec.SlitWidthPx) / 2;
@@ -130,8 +168,10 @@ public sealed class TapeBitmapGeneratorTests
         FontStyle = SKFontStyle.Normal,
         ForegroundColor = SKColors.Black,
         BackgroundColor = SKColors.Black,
-        MainPaddingPx = 8,
-        DeadzonePaddingPx = 0,
+        MainPaddingXPx = 8,
+        MainPaddingYPx = 8,
+        DeadzonePaddingXPx = 0,
+        DeadzonePaddingYPx = 0,
         DebugHighlightRects = true
     };
 
@@ -153,6 +193,33 @@ public sealed class TapeBitmapGeneratorTests
                     && color.Blue > MinRedOrBlueForMagenta
                     && color.Blue < MaxRedOrBlueForMagenta;
                 if (!isMagentaLike)
+                {
+                    continue;
+                }
+
+                left = Math.Min(left, x);
+                top = Math.Min(top, y);
+                rightExclusive = Math.Max(rightExclusive, x + 1);
+                bottomExclusive = Math.Max(bottomExclusive, y + 1);
+            }
+        }
+
+        return new SKRectI(left, top, rightExclusive, bottomExclusive);
+    }
+
+    private static SKRectI FindOpaqueBounds(SKBitmap bitmap)
+    {
+        int left = int.MaxValue;
+        int top = int.MaxValue;
+        int rightExclusive = int.MinValue;
+        int bottomExclusive = int.MinValue;
+
+        for (int y = 0; y < bitmap.Height; y++)
+        {
+            for (int x = 0; x < bitmap.Width; x++)
+            {
+                SKColor color = bitmap.GetPixel(x, y);
+                if (color.Red == 0 && color.Green == 0 && color.Blue == 0)
                 {
                     continue;
                 }

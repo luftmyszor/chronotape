@@ -17,8 +17,10 @@ internal static class TapeGenerationCliParser
     private const double DefaultSegmentWidthMm = 35.56d;
     private const double DefaultSegmentHeightMm = 53.34d;
     private const double DefaultTopMarginMm = 7.62d;
-    private const double DefaultMainPaddingMm = 2.032d;
-    private const double DefaultDeadzonePaddingMm = 0.508d;
+    private const double DefaultMainHorizontalPaddingMm = 2.032d;
+    private const double DefaultMainVerticalPaddingMm = 2.032d;
+    private const double DefaultDeadzoneHorizontalPaddingMm = 0.508d;
+    private const double DefaultDeadzoneVerticalPaddingMm = 0.508d;
     private const double DefaultSlitCenterYOffsetMm = 21.844d;
     private static readonly HashSet<string> SupportedArguments =
     [
@@ -160,26 +162,53 @@ internal static class TapeGenerationCliParser
             return ErrorResult(topMarginError!);
         }
 
+        double? mainHorizontalPaddingMm = config.MainHorizontalPaddingMm ?? config.MainPaddingMm;
+        double? mainVerticalPaddingMm = config.MainVerticalPaddingMm ?? config.MainPaddingMm;
+        double? deadzoneHorizontalPaddingMm = config.DeadzoneHorizontalPaddingMm ?? config.DeadzonePaddingMm;
+        double? deadzoneVerticalPaddingMm = config.DeadzoneVerticalPaddingMm ?? config.DeadzonePaddingMm;
+
         if (!TryResolveDimensionPxFromConfig(
-            config.MainPaddingMm,
-            "MainPaddingMm",
-            defaultValueMm: DefaultMainPaddingMm,
+            mainHorizontalPaddingMm,
+            "MainHorizontalPaddingMm",
+            defaultValueMm: DefaultMainHorizontalPaddingMm,
             dpi,
-            out int mainPaddingPx,
-            out string? mainPaddingError))
+            out int mainPaddingXPx,
+            out string? mainPaddingXError))
         {
-            return ErrorResult(mainPaddingError!);
+            return ErrorResult(mainPaddingXError!);
         }
 
         if (!TryResolveDimensionPxFromConfig(
-            config.DeadzonePaddingMm,
-            "DeadzonePaddingMm",
-            defaultValueMm: DefaultDeadzonePaddingMm,
+            mainVerticalPaddingMm,
+            "MainVerticalPaddingMm",
+            defaultValueMm: DefaultMainVerticalPaddingMm,
             dpi,
-            out int deadzonePaddingPx,
-            out string? deadzonePaddingError))
+            out int mainPaddingYPx,
+            out string? mainPaddingYError))
         {
-            return ErrorResult(deadzonePaddingError!);
+            return ErrorResult(mainPaddingYError!);
+        }
+
+        if (!TryResolveDimensionPxFromConfig(
+            deadzoneHorizontalPaddingMm,
+            "DeadzoneHorizontalPaddingMm",
+            defaultValueMm: DefaultDeadzoneHorizontalPaddingMm,
+            dpi,
+            out int deadzonePaddingXPx,
+            out string? deadzonePaddingXError))
+        {
+            return ErrorResult(deadzonePaddingXError!);
+        }
+
+        if (!TryResolveDimensionPxFromConfig(
+            deadzoneVerticalPaddingMm,
+            "DeadzoneVerticalPaddingMm",
+            defaultValueMm: DefaultDeadzoneVerticalPaddingMm,
+            dpi,
+            out int deadzonePaddingYPx,
+            out string? deadzonePaddingYError))
+        {
+            return ErrorResult(deadzonePaddingYError!);
         }
 
         if (!TryResolveDimensionPxFromConfig(
@@ -268,8 +297,10 @@ internal static class TapeGenerationCliParser
             FontStyle = SKFontStyle.Normal,
             ForegroundColor = SKColors.White,
             BackgroundColor = SKColors.Black,
-            MainPaddingPx = mainPaddingPx,
-            DeadzonePaddingPx = deadzonePaddingPx,
+            MainPaddingXPx = mainPaddingXPx,
+            MainPaddingYPx = mainPaddingYPx,
+            DeadzonePaddingXPx = deadzonePaddingXPx,
+            DeadzonePaddingYPx = deadzonePaddingYPx,
             OutputPath = outputPath,
             DebugDrawRects = debugRects,
             DebugHighlightRects = highlightRects
@@ -465,6 +496,10 @@ internal sealed class TapeConfigFile
     public double? TopMarginMm { get; set; }
     public string? FontPath { get; set; }
     public string? FontFamily { get; set; }
+    public double? MainHorizontalPaddingMm { get; set; }
+    public double? MainVerticalPaddingMm { get; set; }
+    public double? DeadzoneHorizontalPaddingMm { get; set; }
+    public double? DeadzoneVerticalPaddingMm { get; set; }
     public double? MainPaddingMm { get; set; }
     public double? DeadzonePaddingMm { get; set; }
     public double? SlitCenterYOffsetMm { get; set; }

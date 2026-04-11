@@ -88,8 +88,10 @@ bool TryRunTapeSample(string[] cliArgs)
         FontStyle = SKFontStyle.Normal,
         ForegroundColor = SKColors.White,
         BackgroundColor = SKColors.Black,
-        MainPaddingPx = 8,
-        DeadzonePaddingPx = 2,
+        MainPaddingXPx = 8,
+        MainPaddingYPx = 8,
+        DeadzonePaddingXPx = 2,
+        DeadzonePaddingYPx = 2,
         OutputPath = outputPath
     };
 

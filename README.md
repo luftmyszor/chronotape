@@ -14,7 +14,7 @@
 - Main character rule: `MainCharacters` is required and must have exactly length `N`.
 - Deadzone mapping per segment index `i`: `SegmentCharacters[(i + Offset) % N]`.
 - Deadzone aperture uses slit width/height from world geometry and a tape-local vertical offset (`SlitCenterYOffsetPx`).
-- Main glyphs are centered by fixed 7-segment cell center (`'8'` reference cell), not per-glyph visual bounds.
+- Main glyphs are trimmed to opaque bounds before compositing, so final spacing is controlled by configured horizontal/vertical main padding.
 - Deadzone glyphs are projected into fixed slit positions (not re-centered per glyph).
 - If `SlitCount > 1`, `ExportTape` writes one file per slit using suffixes:
   - `...-slit-0.png`, `...-slit-1.png`, etc.
@@ -80,9 +80,11 @@ Supported `--tape-config` geometry fields:
 
 - `Dpi`
 - `SegmentWidthMm`, `SegmentHeightMm`, `TopMarginMm`
-- `MainPaddingMm`, `DeadzonePaddingMm`, `SlitCenterYOffsetMm`
+- `MainHorizontalPaddingMm`, `MainVerticalPaddingMm`
+- `DeadzoneHorizontalPaddingMm`, `DeadzoneVerticalPaddingMm`
+- `SlitCenterYOffsetMm`
 
-`DeadzonePaddingMm` is applied only as final clipping inside the slit aperture.
+Deadzone horizontal/vertical padding is applied only as final clipping inside the slit aperture.
 
 Shared physical geometry fields are defined in `world-geometry.json` and include:
 
@@ -104,8 +106,10 @@ Shared physical geometry fields are defined in `world-geometry.json` and include
   "SegmentWidthMm": 25.4,
   "SegmentHeightMm": 50.8,
   "TopMarginMm": 12.7,
-  "MainPaddingMm": 0.5,
-  "DeadzonePaddingMm": 0.5,
+  "MainHorizontalPaddingMm": 0.5,
+  "MainVerticalPaddingMm": 0.5,
+  "DeadzoneHorizontalPaddingMm": 0.5,
+  "DeadzoneVerticalPaddingMm": 0.5,
   "SlitCenterYOffsetMm": 21.844,
   "FontPath": "/absolute/path/to/font.ttf",
   "OutputPath": "./tape-font.png"

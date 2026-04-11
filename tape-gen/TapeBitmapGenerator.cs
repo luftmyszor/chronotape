@@ -22,8 +22,10 @@ internal sealed class TapeSpec
     public SKColor ForegroundColor { get; set; } = SKColors.White;
     public SKColor BackgroundColor { get; set; } = SKColors.Black;
 
-    public int MainPaddingPx { get; set; }
-    public int DeadzonePaddingPx { get; set; }
+    public int MainPaddingXPx { get; set; }
+    public int MainPaddingYPx { get; set; }
+    public int DeadzonePaddingXPx { get; set; }
+    public int DeadzonePaddingYPx { get; set; }
 
     public string OutputPath { get; set; } = string.Empty;
     public bool DebugDrawRects { get; set; }
@@ -82,13 +84,13 @@ internal static class TapeBitmapGenerator
                 spec.SegmentWidthPx,
                 spec.TopMarginPx + ((i + 1) * spec.SegmentHeightPx));
 
-            SKRectI mainRect = InsetRectOrThrow(segmentRect, spec.MainPaddingPx, "main glyph");
+            SKRectI mainRect = InsetRectOrThrow(segmentRect, spec.MainPaddingXPx, spec.MainPaddingYPx, "main glyph");
             DrawMainGlyph(canvas, mainChars[i], mainRect, typeface, spec.ForegroundColor);
 
             int deadzoneIndex = (i + spec.Offset) % segmentCount;
             char deadzoneChar = spec.SegmentCharacters[deadzoneIndex];
             SKRectI absoluteDeadzoneRect = ComputeDeadzoneApertureRect(segmentRect, spec);
-            SKRectI deadzoneClipRect = InsetRectOrThrow(absoluteDeadzoneRect, spec.DeadzonePaddingPx, "deadzone glyph");
+            SKRectI deadzoneClipRect = InsetRectOrThrow(absoluteDeadzoneRect, spec.DeadzonePaddingXPx, spec.DeadzonePaddingYPx, "deadzone glyph");
             if (useFontFile)
             {
                 DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, deadzoneClipRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
@@ -191,9 +193,12 @@ internal static class TapeBitmapGenerator
             throw new ArgumentOutOfRangeException(nameof(spec), "TopMarginPx must be >= 0.");
         }
 
-        if (spec.MainPaddingPx < 0 || spec.DeadzonePaddingPx < 0)
+        if (spec.MainPaddingXPx < 0
+            || spec.MainPaddingYPx < 0
+            || spec.DeadzonePaddingXPx < 0
+            || spec.DeadzonePaddingYPx < 0)
         {
-            throw new ArgumentException("MainPaddingPx and DeadzonePaddingPx must be >= 0.", nameof(spec));
+            throw new ArgumentException("Main/deadzone horizontal and vertical paddings must be >= 0.", nameof(spec));
         }
 
         if (spec.SlitWidthPx <= 0 || spec.SlitHeightPx <= 0)
@@ -237,8 +242,15 @@ internal static class TapeBitmapGenerator
 
     private static void DrawMainGlyph(SKCanvas canvas, char glyph, SKRectI targetRect, SKTypeface typeface, SKColor color)
     {
-        float fontSize = FindLargestFittingCellTextSize(targetRect.Width, targetRect.Height, typeface);
-        DrawGlyphCenteredByCell(canvas, glyph, targetRect, typeface, color, fontSize);
+        using SKBitmap sourceMask = RenderGlyphMask(glyph, targetRect.Width, targetRect.Height, typeface);
+        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask, "main");
+        using var paint = new SKPaint
+        {
+            IsAntialias = true,
+            FilterQuality = SKFilterQuality.High,
+            ColorFilter = SKColorFilter.CreateBlendMode(color, SKBlendMode.SrcIn)
+        };
+        canvas.DrawBitmap(sourceMaskTight, targetRect, paint);
     }
 
     private static void DrawProjectedDeadzoneGlyphLegacy(
@@ -253,7 +265,7 @@ internal static class TapeBitmapGenerator
         int slitCount)
     {
         using SKBitmap sourceMask = RenderGlyphMask(glyph, sourceRect.Width, sourceRect.Height, typeface);
-        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask);
+        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask, "deadzone");
 
         float sourceWidth = sourceMaskTight.Width;
         float sourceHeight = sourceMaskTight.Height;
@@ -331,7 +343,7 @@ internal static class TapeBitmapGenerator
         int slitCount)
     {
         using SKBitmap sourceMask = RenderGlyphMask(glyph, sourceRect.Width, sourceRect.Height, typeface);
-        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask);
+        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask, "deadzone");
         List<SampledPixel> sampledPixels = SampleOpaquePixels(sourceMaskTight, ProjectionSampleStep);
         if (sampledPixels.Count == 0)
         {
@@ -408,7 +420,7 @@ internal static class TapeBitmapGenerator
         return bitmap;
     }
 
-    private static SKBitmap CropToOpaqueBounds(SKBitmap bitmap)
+    private static SKBitmap CropToOpaqueBounds(SKBitmap bitmap, string glyphKind)
     {
         int minX = bitmap.Width;
         int minY = bitmap.Height;
@@ -433,7 +445,7 @@ internal static class TapeBitmapGenerator
 
         if (maxX < minX || maxY < minY)
         {
-            Console.WriteLine("Warning: rendered deadzone glyph mask had no opaque pixels; projection will be empty.");
+            Console.WriteLine($"Warning: rendered {glyphKind} glyph mask had no opaque pixels.");
             return new SKBitmap(1, 1, bitmap.ColorType, bitmap.AlphaType);
         }
 
@@ -543,12 +555,12 @@ internal static class TapeBitmapGenerator
         HintingLevel = SKPaintHinting.Full
     };
 
-    private static SKRectI InsetRectOrThrow(SKRectI rect, int inset, string label)
+    private static SKRectI InsetRectOrThrow(SKRectI rect, int insetX, int insetY, string label)
     {
-        SKRectI insetRect = new(rect.Left + inset, rect.Top + inset, rect.Right - inset, rect.Bottom - inset);
+        SKRectI insetRect = new(rect.Left + insetX, rect.Top + insetY, rect.Right - insetX, rect.Bottom - insetY);
         if (insetRect.Width <= 0 || insetRect.Height <= 0)
         {
-            throw new ArgumentException($"Padding leaves no drawable area for {label}.");
+            throw new ArgumentException($"Horizontal/vertical padding leaves no drawable area for {label}.");
         }
 
         return insetRect;
