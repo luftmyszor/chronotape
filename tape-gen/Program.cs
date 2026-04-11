@@ -11,6 +11,9 @@ const double SlitHeight = 10;
 const double SlitSegmentCenterDistance = 50;
 const int SlitAmount = 4;
 const double TapeTopHeightFromGround = 0;
+const string InputText = "1234";
+const int TextSize = 200;
+const int SampleStep = 2;
 
 ProjectionOptions? options = ProjectionCliParser.Parse(args);
 
@@ -44,15 +47,15 @@ if (!File.Exists(options.FontPath))
     return;
 }
 
-List<SampledPixel> sampledPixels = TextSampler.RenderAndSampleText(options);
-if (sampledPixels.Count == 0)
+List<CharacterBitmapSample> characterBitmaps = TextSampler.RenderAndSampleCharacters(options.FontPath, InputText, TextSize, SampleStep);
+if (characterBitmaps.Count == 0)
 {
     Console.WriteLine("No drawable pixels sampled from text.");
     return;
 }
 
-List<SlitProjectionResult> results = ProjectAllSlits(options, sampledPixels, slits, displayedSegments, lightSources);
-ProjectionOutputWriter.WriteOutputs(options.OutPath, results);
+List<List<CharacterSlitBitmap>> slitCharacterBitmaps = ProjectBitmapsForAllSlits(characterBitmaps, slits, displayedSegments, lightSources);
+Console.WriteLine($"Generated {slitCharacterBitmaps.Count} slit bitmap lists.");
 Console.WriteLine("\nDone.");
 
 // --- Local helpers ---
@@ -135,26 +138,60 @@ Point3D?[] ComputeLightSources(List<Frame> slits, List<Frame> displayedSegments)
     return sources;
 }
 
-List<SlitProjectionResult> ProjectAllSlits(ProjectionOptions options, List<SampledPixel> pixels,
-    List<Frame> slits, List<Frame> displayedSegments, Point3D?[] lightSources)
+List<List<CharacterSlitBitmap>> ProjectBitmapsForAllSlits(
+    List<CharacterBitmapSample> characterBitmaps,
+    List<Frame> slits,
+    List<Frame> displayedSegments,
+    Point3D?[] lightSources)
 {
-    var results = new List<SlitProjectionResult>();
+    var results = new List<List<CharacterSlitBitmap>>(SlitAmount);
 
     for (int i = 0; i < SlitAmount; i++)
     {
-
         if (!lightSources[i].HasValue)
         {
             Console.WriteLine($"Skipping slit {i}: no computed light source.");
+            results.Add([]);
             continue;
         }
 
-        SlitProjectionResult result = ProjectSingleSlit(i, pixels, displayedSegments[i], slits[i], lightSources[i]!.Value);
-        results.Add(result);
-        Console.WriteLine($"Projected slit {i}: {result.SampleCount} points.");
+        var projectedCharacters = new List<CharacterSlitBitmap>(characterBitmaps.Count);
+        foreach (CharacterBitmapSample characterBitmap in characterBitmaps)
+        {
+            SlitProjectionResult result = ProjectSingleSlit(i, characterBitmap.Pixels, displayedSegments[i], slits[i], lightSources[i]!.Value);
+            projectedCharacters.Add(new CharacterSlitBitmap
+            {
+                Character = characterBitmap.Character,
+                Bitmap = BuildBitmap(characterBitmap.BitmapWidth, characterBitmap.BitmapHeight, result.Points)
+            });
+        }
+
+        results.Add(projectedCharacters);
+        Console.WriteLine($"Projected slit {i}: {projectedCharacters.Count} character bitmaps.");
     }
 
     return results;
+}
+
+bool[][] BuildBitmap(int width, int height, List<ProjectedPoint> points)
+{
+    bool[][] bitmap = new bool[height][];
+    for (int y = 0; y < height; y++)
+    {
+        bitmap[y] = new bool[width];
+    }
+
+    foreach (ProjectedPoint point in points)
+    {
+        if (point.PixelY < 0 || point.PixelY >= height || point.PixelX < 0 || point.PixelX >= width)
+        {
+            continue;
+        }
+
+        bitmap[point.PixelY][point.PixelX] = true;
+    }
+
+    return bitmap;
 }
 
 SlitProjectionResult ProjectSingleSlit(int slitIndex, List<SampledPixel> sampledPixels,
