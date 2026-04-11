@@ -433,6 +433,7 @@ internal static class TapeBitmapGenerator
 
         if (maxX < minX || maxY < minY)
         {
+            Console.WriteLine("Warning: rendered deadzone glyph mask had no opaque pixels; projection will be empty.");
             return new SKBitmap(1, 1, bitmap.ColorType, bitmap.AlphaType);
         }
 
