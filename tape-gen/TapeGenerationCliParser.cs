@@ -19,8 +19,6 @@ internal static class TapeGenerationCliParser
     private const double DefaultTopMarginMm = 7.62d;
     private const double DefaultMainHorizontalPaddingMm = 2.032d;
     private const double DefaultMainVerticalPaddingMm = 2.032d;
-    private const double DefaultDeadzoneHorizontalPaddingMm = 0.508d;
-    private const double DefaultDeadzoneVerticalPaddingMm = 0.508d;
     private const double DefaultSlitCenterYOffsetMm = 21.844d;
     private static readonly HashSet<string> SupportedArguments =
     [
@@ -164,8 +162,6 @@ internal static class TapeGenerationCliParser
 
         double? mainHorizontalPaddingMm = config.MainHorizontalPaddingMm ?? config.MainPaddingMm;
         double? mainVerticalPaddingMm = config.MainVerticalPaddingMm ?? config.MainPaddingMm;
-        double? deadzoneHorizontalPaddingMm = config.DeadzoneHorizontalPaddingMm ?? config.DeadzonePaddingMm;
-        double? deadzoneVerticalPaddingMm = config.DeadzoneVerticalPaddingMm ?? config.DeadzonePaddingMm;
 
         if (!TryResolveDimensionPxFromConfig(
             mainHorizontalPaddingMm,
@@ -187,28 +183,6 @@ internal static class TapeGenerationCliParser
             out string? mainPaddingYError))
         {
             return ErrorResult(mainPaddingYError!);
-        }
-
-        if (!TryResolveDimensionPxFromConfig(
-            deadzoneHorizontalPaddingMm,
-            "DeadzoneHorizontalPaddingMm",
-            defaultValueMm: DefaultDeadzoneHorizontalPaddingMm,
-            dpi,
-            out int deadzonePaddingXPx,
-            out string? deadzonePaddingXError))
-        {
-            return ErrorResult(deadzonePaddingXError!);
-        }
-
-        if (!TryResolveDimensionPxFromConfig(
-            deadzoneVerticalPaddingMm,
-            "DeadzoneVerticalPaddingMm",
-            defaultValueMm: DefaultDeadzoneVerticalPaddingMm,
-            dpi,
-            out int deadzonePaddingYPx,
-            out string? deadzonePaddingYError))
-        {
-            return ErrorResult(deadzonePaddingYError!);
         }
 
         if (!TryResolveDimensionPxFromConfig(
@@ -299,8 +273,6 @@ internal static class TapeGenerationCliParser
             BackgroundColor = SKColors.Black,
             MainPaddingXPx = mainPaddingXPx,
             MainPaddingYPx = mainPaddingYPx,
-            DeadzonePaddingXPx = deadzonePaddingXPx,
-            DeadzonePaddingYPx = deadzonePaddingYPx,
             OutputPath = outputPath,
             DebugDrawRects = debugRects,
             DebugHighlightRects = highlightRects
@@ -498,10 +470,7 @@ internal sealed class TapeConfigFile
     public string? FontFamily { get; set; }
     public double? MainHorizontalPaddingMm { get; set; }
     public double? MainVerticalPaddingMm { get; set; }
-    public double? DeadzoneHorizontalPaddingMm { get; set; }
-    public double? DeadzoneVerticalPaddingMm { get; set; }
     public double? MainPaddingMm { get; set; }
-    public double? DeadzonePaddingMm { get; set; }
     public double? SlitCenterYOffsetMm { get; set; }
     public double? Dpi { get; set; }
     public string? OutputPath { get; set; }

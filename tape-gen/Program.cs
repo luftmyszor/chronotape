@@ -90,8 +90,6 @@ bool TryRunTapeSample(string[] cliArgs)
         BackgroundColor = SKColors.Black,
         MainPaddingXPx = 8,
         MainPaddingYPx = 8,
-        DeadzonePaddingXPx = 2,
-        DeadzonePaddingYPx = 2,
         OutputPath = outputPath
     };
 

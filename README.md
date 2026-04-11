@@ -81,10 +81,7 @@ Supported `--tape-config` geometry fields:
 - `Dpi`
 - `SegmentWidthMm`, `SegmentHeightMm`, `TopMarginMm`
 - `MainHorizontalPaddingMm`, `MainVerticalPaddingMm`
-- `DeadzoneHorizontalPaddingMm`, `DeadzoneVerticalPaddingMm`
 - `SlitCenterYOffsetMm`
-
-Deadzone horizontal/vertical padding is applied only as final clipping inside the slit aperture.
 
 Shared physical geometry fields are defined in `world-geometry.json` and include:
 
@@ -108,8 +105,6 @@ Shared physical geometry fields are defined in `world-geometry.json` and include
   "TopMarginMm": 12.7,
   "MainHorizontalPaddingMm": 0.5,
   "MainVerticalPaddingMm": 0.5,
-  "DeadzoneHorizontalPaddingMm": 0.5,
-  "DeadzoneVerticalPaddingMm": 0.5,
   "SlitCenterYOffsetMm": 21.844,
   "FontPath": "/absolute/path/to/font.ttf",
   "OutputPath": "./tape-font.png"

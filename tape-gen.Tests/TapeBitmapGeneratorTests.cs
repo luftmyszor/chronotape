@@ -8,72 +8,6 @@ public sealed class TapeBitmapGeneratorTests
     private const byte MaxRedOrBlueForMagenta = 200;
 
     [Fact]
-    public void GenerateTapeBitmap_UsesDeadzoneApertureForProjectionAndAppliesPaddingAsClip()
-    {
-        var baselineSpec = new TapeSpec
-        {
-            SegmentCharacters = "8",
-            MainCharacters = "8",
-            Offset = 0,
-            SlitCount = 1,
-            SegmentWidthPx = 140,
-            SegmentHeightPx = 210,
-            TopMarginPx = 0,
-            SlitWidthPx = 36,
-            SlitHeightPx = 36,
-            SlitCenterYOffsetPx = 61,
-            FontFamily = "monospace",
-            FontStyle = SKFontStyle.Normal,
-            ForegroundColor = SKColors.White,
-            BackgroundColor = SKColors.Black,
-            MainPaddingXPx = 8,
-            MainPaddingYPx = 8,
-            DeadzonePaddingXPx = 0,
-            DeadzonePaddingYPx = 0
-        };
-
-        var clippedSpec = new TapeSpec
-        {
-            SegmentCharacters = baselineSpec.SegmentCharacters,
-            MainCharacters = baselineSpec.MainCharacters,
-            Offset = baselineSpec.Offset,
-            SlitCount = baselineSpec.SlitCount,
-            SegmentWidthPx = baselineSpec.SegmentWidthPx,
-            SegmentHeightPx = baselineSpec.SegmentHeightPx,
-            TopMarginPx = baselineSpec.TopMarginPx,
-            SlitWidthPx = baselineSpec.SlitWidthPx,
-            SlitHeightPx = baselineSpec.SlitHeightPx,
-            SlitCenterYOffsetPx = baselineSpec.SlitCenterYOffsetPx,
-            FontFamily = baselineSpec.FontFamily,
-            FontStyle = baselineSpec.FontStyle,
-            ForegroundColor = baselineSpec.ForegroundColor,
-            BackgroundColor = baselineSpec.BackgroundColor,
-            MainPaddingXPx = baselineSpec.MainPaddingXPx,
-            MainPaddingYPx = baselineSpec.MainPaddingYPx,
-            DeadzonePaddingXPx = 4,
-            DeadzonePaddingYPx = 4
-        };
-
-        using SKBitmap baseline = TapeBitmapGenerator.GenerateTapeBitmap(baselineSpec);
-        using SKBitmap clipped = TapeBitmapGenerator.GenerateTapeBitmap(clippedSpec);
-
-        SKRectI apertureRect = BuildApertureRect(baselineSpec);
-        SKRectI clipRect = new(
-            apertureRect.Left + clippedSpec.DeadzonePaddingXPx,
-            apertureRect.Top + clippedSpec.DeadzonePaddingYPx,
-            apertureRect.Right - clippedSpec.DeadzonePaddingXPx,
-            apertureRect.Bottom - clippedSpec.DeadzonePaddingYPx);
-
-        for (int y = clipRect.Top; y < clipRect.Bottom; y++)
-        {
-            for (int x = clipRect.Left; x < clipRect.Right; x++)
-            {
-                Assert.Equal(baseline.GetPixel(x, y), clipped.GetPixel(x, y));
-            }
-        }
-    }
-
-    [Fact]
     public void GenerateTapeBitmap_CentersHorizontallyAndMovesApertureVerticallyByOffset()
     {
         TapeSpec topSpec = BuildDebugHighlightSpec(slitWidthPx: 36, slitHeightPx: 30, slitCenterYOffsetPx: 40);
@@ -155,8 +89,6 @@ public sealed class TapeBitmapGeneratorTests
         BackgroundColor = SKColors.Black,
         MainPaddingXPx = 8,
         MainPaddingYPx = 8,
-        DeadzonePaddingXPx = 0,
-        DeadzonePaddingYPx = 0,
         DebugHighlightRects = true
     };
 

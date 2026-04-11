@@ -24,8 +24,6 @@ internal sealed class TapeSpec
 
     public int MainPaddingXPx { get; set; }
     public int MainPaddingYPx { get; set; }
-    public int DeadzonePaddingXPx { get; set; }
-    public int DeadzonePaddingYPx { get; set; }
 
     public string OutputPath { get; set; } = string.Empty;
     public bool DebugDrawRects { get; set; }
@@ -91,14 +89,13 @@ internal static class TapeBitmapGenerator
             int deadzoneIndex = (i + spec.Offset) % segmentCount;
             char deadzoneChar = spec.SegmentCharacters[deadzoneIndex];
             SKRectI absoluteDeadzoneRect = ComputeDeadzoneApertureRect(segmentRect, spec);
-            SKRectI deadzoneClipRect = InsetRectOrThrow(absoluteDeadzoneRect, spec.DeadzonePaddingXPx, spec.DeadzonePaddingYPx, "deadzone glyph");
             if (useFontFile)
             {
-                DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, deadzoneClipRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+                DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
             }
             else
             {
-                DrawProjectedDeadzoneGlyphLegacy(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, deadzoneClipRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+                DrawProjectedDeadzoneGlyphLegacy(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
             }
 
             if (spec.DebugDrawRects)
@@ -195,11 +192,9 @@ internal static class TapeBitmapGenerator
         }
 
         if (spec.MainPaddingXPx < 0
-            || spec.MainPaddingYPx < 0
-            || spec.DeadzonePaddingXPx < 0
-            || spec.DeadzonePaddingYPx < 0)
+            || spec.MainPaddingYPx < 0)
         {
-            throw new ArgumentException("Main/deadzone horizontal and vertical paddings must be >= 0.", nameof(spec));
+            throw new ArgumentException("Main horizontal and vertical paddings must be >= 0.", nameof(spec));
         }
 
         if (spec.SlitWidthPx <= 0 || spec.SlitHeightPx <= 0)
@@ -252,7 +247,6 @@ internal static class TapeBitmapGenerator
         char glyph,
         SKRectI sourceRect,
         SKRectI deadzoneApertureRect,
-        SKRectI deadzoneClipRect,
         SKTypeface typeface,
         SKColor color,
         int slitIndex,
@@ -312,10 +306,10 @@ internal static class TapeBitmapGenerator
                 int targetX = (int)MathF.Round(projectedOriginX + projectedX);
                 int targetY = (int)MathF.Round(projectedOriginY - projectedY);
 
-                if (targetX < deadzoneClipRect.Left
-                    || targetX >= deadzoneClipRect.Right
-                    || targetY < deadzoneClipRect.Top
-                    || targetY >= deadzoneClipRect.Bottom)
+                if (targetX < deadzoneApertureRect.Left
+                    || targetX >= deadzoneApertureRect.Right
+                    || targetY < deadzoneApertureRect.Top
+                    || targetY >= deadzoneApertureRect.Bottom)
                 {
                     continue;
                 }
@@ -330,7 +324,6 @@ internal static class TapeBitmapGenerator
         char glyph,
         SKRectI sourceRect,
         SKRectI deadzoneApertureRect,
-        SKRectI deadzoneClipRect,
         SKTypeface typeface,
         SKColor color,
         int slitIndex,
@@ -390,14 +383,6 @@ internal static class TapeBitmapGenerator
 
                 int targetX = deadzoneApertureRect.Left + x;
                 int targetY = deadzoneApertureRect.Top + y;
-                if (targetX < deadzoneClipRect.Left
-                    || targetX >= deadzoneClipRect.Right
-                    || targetY < deadzoneClipRect.Top
-                    || targetY >= deadzoneClipRect.Bottom)
-                {
-                    continue;
-                }
-
                 tapeBitmap.SetPixel(targetX, targetY, color);
             }
         }
