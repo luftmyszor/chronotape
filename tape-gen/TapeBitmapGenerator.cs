@@ -91,7 +91,7 @@ internal static class TapeBitmapGenerator
             SKRectI absoluteDeadzoneRect = ComputeDeadzoneApertureRect(segmentRect, spec);
             if (useFontFile)
             {
-                DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+                DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount, i);
             }
             else
             {
@@ -327,7 +327,8 @@ internal static class TapeBitmapGenerator
         SKTypeface typeface,
         SKColor color,
         int slitIndex,
-        int slitCount)
+        int slitCount,
+        int segmentIndex)
     {
         using SKBitmap sourceMask = RenderGlyphMask(glyph, sourceRect.Width, sourceRect.Height, typeface);
         List<SampledPixel> sampledPixels = SampleOpaquePixels(sourceMask, ProjectionSampleStep);
@@ -365,6 +366,11 @@ internal static class TapeBitmapGenerator
         {
             throw new InvalidOperationException("Cannot compute projection light source: display and slit corners do not converge.");
         }
+
+        Console.WriteLine($"[Segment {segmentIndex} '{glyph}' | Slit {slitIndex}]");
+        Console.WriteLine($"  Display center : ({displayFrame.Center.X:F3}, {displayFrame.Center.Y:F3}, {displayFrame.Center.Z:F3})");
+        Console.WriteLine($"  Slit center    : ({slitFrame.Center.X:F3}, {slitFrame.Center.Y:F3}, {slitFrame.Center.Z:F3})");
+        Console.WriteLine($"  Light source   : ({lightSource.X:F3}, {lightSource.Y:F3}, {lightSource.Z:F3})");
 
         SlitProjectionResult projection = ProjectionPipeline.ProjectSingleSlit(
             slitIndex,
