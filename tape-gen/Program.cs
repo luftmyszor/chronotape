@@ -1,4 +1,4 @@
-using Phys;
+﻿using Phys;
 
 // Example:
 // dotnet run --project ./tape-gen/tape-gen.csproj -- --font /absolute/path/to/font.ttf --text "1234" --fontSize 200 --sampleStep 2 --out ./projection-out --slitIndex 0
@@ -37,11 +37,6 @@ if (options is null)
     return;
 }
 
-if (options.SlitIndex.HasValue && (options.SlitIndex.Value < 0 || options.SlitIndex.Value >= SlitAmount))
-{
-    Console.WriteLine($"Invalid --slitIndex {options.SlitIndex.Value}. Expected 0..{SlitAmount - 1}.");
-    return;
-}
 
 if (!File.Exists(options.FontPath))
 {
@@ -57,7 +52,7 @@ if (sampledPixels.Count == 0)
 }
 
 List<SlitProjectionResult> results = ProjectAllSlits(options, sampledPixels, slits, displayedSegments, lightSources);
-ProjectionOutputWriter.WriteOutputs(options.OutPath, results, options.SlitIndex.HasValue);
+ProjectionOutputWriter.WriteOutputs(options.OutPath, results);
 Console.WriteLine("\nDone.");
 
 // --- Local helpers ---
@@ -147,7 +142,6 @@ List<SlitProjectionResult> ProjectAllSlits(ProjectionOptions options, List<Sampl
 
     for (int i = 0; i < SlitAmount; i++)
     {
-        if (options.SlitIndex.HasValue && options.SlitIndex.Value != i) continue;
 
         if (!lightSources[i].HasValue)
         {

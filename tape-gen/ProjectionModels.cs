@@ -3,12 +3,7 @@ using Phys;
 internal sealed class ProjectionOptions
 {
     public string FontPath { get; set; } = string.Empty;
-    public string Text { get; set; } = string.Empty;
-    public double FontSize { get; set; }
-    public int SampleStep { get; set; }
     public string OutPath { get; set; } = string.Empty;
-    public int? SlitIndex { get; set; }
-    public string SampleMode { get; set; } = "fill";
 }
 
 internal sealed class SampledPixel

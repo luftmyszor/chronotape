@@ -3,7 +3,7 @@ using System.Text.Json;
 
 internal static class ProjectionOutputWriter
 {
-    public static void WriteOutputs(string outputPath, List<SlitProjectionResult> results, bool singleSlitRequested)
+    public static void WriteOutputs(string outputPath, List<SlitProjectionResult> results)
     {
         if (results.Count == 0)
         {
@@ -14,25 +14,6 @@ internal static class ProjectionOutputWriter
         string extension = Path.GetExtension(outputPath).ToLowerInvariant();
         bool outputIsSingleFile = extension is ".csv" or ".json";
 
-        if (outputIsSingleFile)
-        {
-            if (!singleSlitRequested || results.Count != 1)
-            {
-                throw new InvalidOperationException("When --out is a .csv/.json file, provide --slitIndex to export exactly one slit.");
-            }
-
-            if (extension == ".csv")
-            {
-                WriteCsv(outputPath, results[0]);
-            }
-            else
-            {
-                WriteJson(outputPath, results[0]);
-            }
-
-            Console.WriteLine($"Wrote {outputPath}");
-            return;
-        }
 
         Directory.CreateDirectory(outputPath);
         foreach (SlitProjectionResult result in results)

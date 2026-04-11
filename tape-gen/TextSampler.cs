@@ -13,7 +13,7 @@ internal static class TextSampler
         using var paint = new SKPaint
         {
             Typeface = typeface,
-            TextSize = (float)options.FontSize,
+            TextSize = 200,
             IsAntialias = true,
             Color = SKColors.White,
             IsStroke = false
@@ -35,7 +35,7 @@ internal static class TextSampler
         canvas.DrawText(options.Text, drawX, drawY, paint);
         canvas.Flush();
 
-        bool edgeOnly = string.Equals(options.SampleMode, "edge", StringComparison.OrdinalIgnoreCase);
+        bool edgeOnly = false;
         var sampled = new List<SampledPixel>();
 
         for (int y = 0; y < bitmap.Height; y += options.SampleStep)
@@ -62,7 +62,7 @@ internal static class TextSampler
             }
         }
 
-        Console.WriteLine($"Sampled {sampled.Count} pixels from rendered text ({bitmap.Width}x{bitmap.Height}, mode={options.SampleMode}, step={options.SampleStep}).");
+        Console.WriteLine($"Sampled {sampled.Count} pixels from rendered text ({bitmap.Width}x{bitmap.Height}, step={options.SampleStep}).");
         return sampled;
     }
 
