@@ -274,7 +274,7 @@ static ProjectionOptions? ParseProjectionOptions(string[] cliArgs)
         Environment.Exit(1);
     }
 
-    if (!map.TryGetValue("--text", out string? text) || string.IsNullOrEmpty(text))
+    if (!map.TryGetValue("--text", out string? text) || string.IsNullOrWhiteSpace(text))
     {
         Console.WriteLine("--text is required when running projection mode.");
         PrintUsage();

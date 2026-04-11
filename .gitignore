@@ -3,8 +3,6 @@
 # =========================
 bin/
 obj/
-tape-gen/bin/
-tape-gen/obj/
 [Bb]uild/
 [Ll]og/
 
