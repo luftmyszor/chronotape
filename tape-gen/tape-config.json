@@ -10,10 +10,7 @@
     "TopMarginMm": 12.7,
     "MainPaddingMm": 0.0,
     "DeadzonePaddingMm": 0.508,
-    "DeadzoneRectMm": {
-        "Left": 10.16,
-        "Right": 27.94,
-        "Top": 51.308,
-        "Bottom": 68.58
-    }
+    "SlitWidthMm": 17.78,
+    "SlitHeightMm": 17.272,
+    "SlitCenterYOffsetMm": 21.844
 }

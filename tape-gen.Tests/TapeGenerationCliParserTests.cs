@@ -99,12 +99,9 @@ public sealed class TapeGenerationCliParserTests
           "TopMarginMm": 12.7,
           "MainPaddingMm": 0.5,
           "DeadzonePaddingMm": 0.5,
-          "DeadzoneRectMm": {
-            "Left": 2.54,
-            "Top": 10.16,
-            "Right": 20.32,
-            "Bottom": 40.64
-          }
+          "SlitWidthMm": 17.78,
+          "SlitHeightMm": 30.48,
+          "SlitCenterYOffsetMm": 7.62
         }
         """);
 
@@ -124,10 +121,9 @@ public sealed class TapeGenerationCliParserTests
         Assert.Equal(300, result.Spec.TopMarginPx);
         Assert.Equal(12, result.Spec.MainPaddingPx);
         Assert.Equal(12, result.Spec.DeadzonePaddingPx);
-        Assert.Equal(60, result.Spec.DeadzoneRectPx.Left);
-        Assert.Equal(240, result.Spec.DeadzoneRectPx.Top);
-        Assert.Equal(480, result.Spec.DeadzoneRectPx.Right);
-        Assert.Equal(960, result.Spec.DeadzoneRectPx.Bottom);
+        Assert.Equal(420, result.Spec.SlitWidthPx);
+        Assert.Equal(720, result.Spec.SlitHeightPx);
+        Assert.Equal(180, result.Spec.SlitCenterYOffsetPx);
     }
 
     [Fact]
@@ -169,10 +165,85 @@ public sealed class TapeGenerationCliParserTests
         Assert.Equal(30, result.Spec.TopMarginPx);
         Assert.Equal(8, result.Spec.MainPaddingPx);
         Assert.Equal(2, result.Spec.DeadzonePaddingPx);
-        Assert.Equal(52, result.Spec.DeadzoneRectPx.Left);
-        Assert.Equal(148, result.Spec.DeadzoneRectPx.Top);
-        Assert.Equal(88, result.Spec.DeadzoneRectPx.Right);
-        Assert.Equal(184, result.Spec.DeadzoneRectPx.Bottom);
+        Assert.Equal(36, result.Spec.SlitWidthPx);
+        Assert.Equal(36, result.Spec.SlitHeightPx);
+        Assert.Equal(61, result.Spec.SlitCenterYOffsetPx);
+    }
+
+    [Fact]
+    public void Parse_DerivesSlitGeometryFromLegacyDeadzoneRectWhenNeeded()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "chronotape-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string configPath = Path.Combine(tempDir, "tape-config.json");
+        File.WriteAllText(configPath, """
+        {
+          "SegmentCharacters": "9876",
+          "MainCharacters": "6789",
+          "Dpi": 600,
+          "SegmentHeightMm": 50.8,
+          "DeadzoneRectMm": {
+            "Left": 2.54,
+            "Top": 10.16,
+            "Right": 20.32,
+            "Bottom": 40.64
+          }
+        }
+        """);
+
+        string[] args =
+        [
+            "--generate-tape",
+            "--tape-config", configPath
+        ];
+
+        TapeGenerationParseResult result = TapeGenerationCliParser.Parse(args, _ => null);
+
+        Assert.True(result.ShouldRun);
+        Assert.Null(result.Error);
+        Assert.NotNull(result.Spec);
+        Assert.Equal(420, result.Spec.SlitWidthPx);
+        Assert.Equal(720, result.Spec.SlitHeightPx);
+        Assert.Equal(0, result.Spec.SlitCenterYOffsetPx);
+    }
+
+    [Fact]
+    public void Parse_PrefersExplicitSlitFieldsOverLegacyDeadzoneRect()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "chronotape-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        string configPath = Path.Combine(tempDir, "tape-config.json");
+        File.WriteAllText(configPath, """
+        {
+          "SegmentCharacters": "9876",
+          "MainCharacters": "6789",
+          "Dpi": 600,
+          "SlitWidthMm": 10.16,
+          "SlitHeightMm": 12.7,
+          "SlitCenterYOffsetMm": 5.08,
+          "DeadzoneRectMm": {
+            "Left": 2.54,
+            "Top": 10.16,
+            "Right": 20.32,
+            "Bottom": 40.64
+          }
+        }
+        """);
+
+        string[] args =
+        [
+            "--generate-tape",
+            "--tape-config", configPath
+        ];
+
+        TapeGenerationParseResult result = TapeGenerationCliParser.Parse(args, _ => null);
+
+        Assert.True(result.ShouldRun);
+        Assert.Null(result.Error);
+        Assert.NotNull(result.Spec);
+        Assert.Equal(240, result.Spec.SlitWidthPx);
+        Assert.Equal(300, result.Spec.SlitHeightPx);
+        Assert.Equal(120, result.Spec.SlitCenterYOffsetPx);
     }
 
     [Fact]
