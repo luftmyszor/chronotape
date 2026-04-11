@@ -1,6 +1,5 @@
 using SkiaSharp;
 using Xunit;
-using System.Reflection;
 
 public sealed class TapeBitmapGeneratorTests
 {
@@ -160,12 +159,8 @@ public sealed class TapeBitmapGeneratorTests
             }
         }
 
-        MethodInfo? cropMethod = typeof(TapeBitmapGenerator).GetMethod("CropToOpaqueBounds", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(cropMethod);
-
-        using var cropped = (SKBitmap?)cropMethod!.Invoke(null, [bitmap, "test"]);
-        Assert.NotNull(cropped);
-        Assert.Equal(3, cropped!.Width);
+        using SKBitmap cropped = TapeBitmapGenerator.CropToOpaqueBounds(bitmap, "test");
+        Assert.Equal(3, cropped.Width);
         Assert.Equal(3, cropped.Height);
     }
 

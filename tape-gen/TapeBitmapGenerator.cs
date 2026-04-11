@@ -421,7 +421,7 @@ internal static class TapeBitmapGenerator
         return bitmap;
     }
 
-    private static SKBitmap CropToOpaqueBounds(SKBitmap bitmap, string glyphKind)
+    internal static SKBitmap CropToOpaqueBounds(SKBitmap bitmap, string glyphKind)
     {
         int minX = bitmap.Width;
         int minY = bitmap.Height;
