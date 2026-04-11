@@ -24,7 +24,7 @@
 Generate sample tape output(s):
 
 ```bash
-dotnet run --project /home/runner/work/chronotape/chronotape/tape-gen/tape-gen.csproj -- --sample-tape --sample-out ./tape.png
+dotnet run --project ./tape-gen/tape-gen.csproj -- --sample-tape --sample-out ./tape.png
 ```
 
 Sample values used:

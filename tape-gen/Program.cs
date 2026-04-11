@@ -1,7 +1,6 @@
 using Phys;
 using SkiaSharp;
 
-
 if (TryRunTapeSample(args))
 {
     return;
