@@ -41,6 +41,9 @@ Input precedence:
 3. `--tape-config <path-to-json>`
 4. Built-in non-sample defaults (layout/output defaults only)
 
+For layout values, each field now supports both pixel and millimeter inputs.
+Within the same source (CLI, env, or config), `mm` wins over `px` if both are present.
+
 Required values (must be provided via CLI/env/config):
 
 - `SegmentCharacters` (`--segment-characters` / `CHRONOTAPE_SEGMENT_CHARACTERS`)
@@ -59,6 +62,55 @@ Font mode:
 If required values are missing, tape generation fails with a clear error instead of falling back to sample values.
 
 If a font path is provided but invalid, generation fails with `Font file does not exist: ...`.
+
+### Millimeter-based layout options (`--dpi` + `*-mm`)
+
+Millimeter values are converted with:
+
+- `px = round(mm * dpi / 25.4)`
+- rounding mode: `MidpointRounding.AwayFromZero`
+
+Millimeter inputs require DPI from one of:
+
+- `--dpi <number>`
+- `CHRONOTAPE_DPI`
+- `Dpi` in `--tape-config` JSON
+
+Supported CLI mm options:
+
+- `--segment-width-mm`, `--segment-height-mm`
+- `--top-margin-mm`
+- `--main-padding-mm`, `--deadzone-padding-mm`
+- `--deadzone-left-mm`, `--deadzone-top-mm`, `--deadzone-right-mm`, `--deadzone-bottom-mm`
+
+Pixel equivalents (`--segment-width`, etc.) remain fully supported for backward compatibility.
+
+Example:
+
+```bash
+dotnet run --project ./tape-gen/tape-gen.csproj -- \
+  --generate-tape \
+  --segment-characters 7391 \
+  --main-characters 9137 \
+  --dpi 600 \
+  --segment-width-mm 25.4 \
+  --segment-height-mm 50.8 \
+  --top-margin-mm 12.7 \
+  --deadzone-left-mm 2.54 \
+  --deadzone-top-mm 10.16 \
+  --deadzone-right-mm 20.32 \
+  --deadzone-bottom-mm 40.64 \
+  --tape-out ./tape-mm.png
+```
+
+Config JSON also supports parallel mm fields:
+
+- `Dpi`
+- `SegmentWidthMm`, `SegmentHeightMm`, `TopMarginMm`
+- `MainPaddingMm`, `DeadzonePaddingMm`
+- `DeadzoneRectMm` (`Left`, `Top`, `Right`, `Bottom`)
+
+Existing `*Px` config fields remain unchanged.
 
 ### Generate using config only (including `FontPath`)
 
@@ -109,6 +161,13 @@ This writes intermediate artifacts such as:
 
 - `./projection-debug/rendered/*.png` (sampled rendered glyph bitmaps)
 - `./projection-debug/projected/slit-*/*.png` (projected glyph bitmaps per slit)
+
+### Tape rectangle debug visuals
+
+- `--debug-rects`: existing outline-only debug rectangles
+- `--highlight-rects`: high-contrast overlay mode (semi-transparent fills + bold outlines) for segment and deadzone bounds
+
+Both modes can be enabled together and work for multi-slit output.
 
 ### Sample CLI (documentation/testing)
 

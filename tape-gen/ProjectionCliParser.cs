@@ -99,7 +99,9 @@ internal static class ProjectionCliParser
         Console.WriteLine("  CLI flags > environment variables > --tape-config JSON > defaults");
         Console.WriteLine("  Required values: SegmentCharacters, MainCharacters");
         Console.WriteLine("  Env vars: CHRONOTAPE_SEGMENT_CHARACTERS, CHRONOTAPE_MAIN_CHARACTERS, CHRONOTAPE_FONT_PATH, CHRONOTAPE_OUTPUT_PATH, ...");
+        Console.WriteLine("  Layout supports both px and mm fields; mm conversion requires --dpi / CHRONOTAPE_DPI / Dpi in config");
         Console.WriteLine("  Glyph mode: legacy renderer by default, font-driven mode when --font/FontPath is provided");
+        Console.WriteLine("  Debug visuals: --debug-rects (outlines), --highlight-rects (high-contrast overlay)");
         Console.WriteLine();
         Console.WriteLine("Sample tape (documentation/testing):");
         Console.WriteLine("  dotnet run --project ./tape-gen/tape-gen.csproj -- --sample-tape [--sample-out ./tape.png]");

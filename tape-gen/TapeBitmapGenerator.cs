@@ -25,6 +25,7 @@ internal sealed class TapeSpec
 
     public string OutputPath { get; set; } = string.Empty;
     public bool DebugDrawRects { get; set; }
+    public bool DebugHighlightRects { get; set; }
 }
 
 internal static class TapeBitmapGenerator
@@ -99,6 +100,12 @@ internal static class TapeBitmapGenerator
             {
                 DrawDebugRect(canvas, segmentRect, new SKColor(64, 64, 64));
                 DrawDebugRect(canvas, absoluteDeadzoneRect, new SKColor(255, 0, 0));
+            }
+
+            if (spec.DebugHighlightRects)
+            {
+                DrawHighlightRect(canvas, segmentRect, new SKColor(255, 255, 0, 40), new SKColor(255, 255, 0), 2f);
+                DrawHighlightRect(canvas, absoluteDeadzoneRect, new SKColor(255, 0, 255, 80), new SKColor(255, 0, 255), 2f);
             }
         }
 
@@ -525,5 +532,25 @@ internal static class TapeBitmapGenerator
             Color = color
         };
         canvas.DrawRect(rect, paint);
+    }
+
+    private static void DrawHighlightRect(SKCanvas canvas, SKRectI rect, SKColor fillColor, SKColor strokeColor, float strokeWidth)
+    {
+        using var fill = new SKPaint
+        {
+            IsAntialias = false,
+            IsStroke = false,
+            Color = fillColor
+        };
+        canvas.DrawRect(rect, fill);
+
+        using var stroke = new SKPaint
+        {
+            IsAntialias = false,
+            IsStroke = true,
+            StrokeWidth = strokeWidth,
+            Color = strokeColor
+        };
+        canvas.DrawRect(rect, stroke);
     }
 }
