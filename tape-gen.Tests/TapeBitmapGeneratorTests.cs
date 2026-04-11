@@ -112,37 +112,22 @@ public sealed class TapeBitmapGeneratorTests
     }
 
     [Fact]
-    public void GenerateTapeBitmap_TrimsMainGlyphSoBoundsFollowConfiguredPadding()
+    public void CropToOpaqueBounds_IgnoresLowAlphaFringePixels()
     {
-        var spec = new TapeSpec
+        using var bitmap = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
+        bitmap.Erase(SKColors.Transparent);
+        bitmap.SetPixel(0, 0, new SKColor(255, 255, 255, 1));
+        for (int y = 4; y <= 6; y++)
         {
-            SegmentCharacters = "1",
-            MainCharacters = "1",
-            Offset = 0,
-            SlitCount = 1,
-            SegmentWidthPx = 140,
-            SegmentHeightPx = 210,
-            TopMarginPx = 0,
-            SlitWidthPx = 20,
-            SlitHeightPx = 20,
-            SlitCenterYOffsetPx = 0,
-            FontFamily = "monospace",
-            FontStyle = SKFontStyle.Normal,
-            ForegroundColor = SKColors.White,
-            BackgroundColor = SKColors.Black,
-            MainPaddingXPx = 10,
-            MainPaddingYPx = 20,
-            DeadzonePaddingXPx = 0,
-            DeadzonePaddingYPx = 0
-        };
+            for (int x = 4; x <= 6; x++)
+            {
+                bitmap.SetPixel(x, y, SKColors.White);
+            }
+        }
 
-        using SKBitmap bitmap = TapeBitmapGenerator.GenerateTapeBitmap(spec);
-        SKRectI opaqueBounds = FindOpaqueBounds(bitmap);
-
-        Assert.True(opaqueBounds.Left <= spec.MainPaddingXPx + 1);
-        Assert.True(opaqueBounds.Top <= spec.MainPaddingYPx + 1);
-        Assert.True(opaqueBounds.Right >= (spec.SegmentWidthPx - spec.MainPaddingXPx) - 1);
-        Assert.True(opaqueBounds.Bottom >= (spec.SegmentHeightPx - spec.MainPaddingYPx) - 1);
+        using SKBitmap cropped = TapeBitmapGenerator.CropToOpaqueBounds(bitmap, "test");
+        Assert.Equal(3, cropped.Width);
+        Assert.Equal(3, cropped.Height);
     }
 
     private static SKRectI BuildApertureRect(TapeSpec spec)

@@ -48,6 +48,7 @@ internal static class TapeBitmapGenerator
     private const int ProjectionSampleStep = 1;
     private const float MinimumDisplayDistance = 1f;
     private const float MaxFontSearchUpperBound = 8192f;
+    private const byte GlyphMaskAlphaThreshold = 16;
 
     public static SKBitmap GenerateTapeBitmap(TapeSpec spec)
     {
@@ -242,15 +243,8 @@ internal static class TapeBitmapGenerator
 
     private static void DrawMainGlyph(SKCanvas canvas, char glyph, SKRectI targetRect, SKTypeface typeface, SKColor color)
     {
-        using SKBitmap sourceMask = RenderGlyphMask(glyph, targetRect.Width, targetRect.Height, typeface);
-        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask, "main");
-        using var paint = new SKPaint
-        {
-            IsAntialias = true,
-            FilterQuality = SKFilterQuality.High,
-            ColorFilter = SKColorFilter.CreateBlendMode(color, SKBlendMode.SrcIn)
-        };
-        canvas.DrawBitmap(sourceMaskTight, targetRect, paint);
+        float fontSize = FindLargestFittingCellTextSize(targetRect.Width, targetRect.Height, typeface);
+        DrawGlyphCenteredByCell(canvas, glyph, targetRect, typeface, color, fontSize);
     }
 
     private static void DrawProjectedDeadzoneGlyphLegacy(
@@ -420,25 +414,25 @@ internal static class TapeBitmapGenerator
         return bitmap;
     }
 
-    private static SKBitmap CropToOpaqueBounds(SKBitmap bitmap, string glyphKind)
+    internal static SKBitmap CropToOpaqueBounds(SKBitmap bitmap, string glyphKind)
     {
         int minX = bitmap.Width;
-        int minY = bitmap.Height;
         int maxX = -1;
+        int minY = bitmap.Height;
         int maxY = -1;
 
         for (int y = 0; y < bitmap.Height; y++)
         {
             for (int x = 0; x < bitmap.Width; x++)
             {
-                if (bitmap.GetPixel(x, y).Alpha == 0)
+                if (!IsSignificantMaskPixel(bitmap.GetPixel(x, y)))
                 {
                     continue;
                 }
 
                 minX = Math.Min(minX, x);
-                minY = Math.Min(minY, y);
                 maxX = Math.Max(maxX, x);
+                minY = Math.Min(minY, y);
                 maxY = Math.Max(maxY, y);
             }
         }
@@ -465,7 +459,7 @@ internal static class TapeBitmapGenerator
         {
             for (int x = 0; x < bitmap.Width; x += step)
             {
-                if (bitmap.GetPixel(x, y).Alpha == 0)
+                if (!IsSignificantMaskPixel(bitmap.GetPixel(x, y)))
                 {
                     continue;
                 }
@@ -482,6 +476,8 @@ internal static class TapeBitmapGenerator
 
         return sampled;
     }
+
+    private static bool IsSignificantMaskPixel(SKColor color) => color.Alpha >= GlyphMaskAlphaThreshold;
 
     private static float FindLargestFittingCellTextSize(int targetWidth, int targetHeight, SKTypeface typeface)
     {
