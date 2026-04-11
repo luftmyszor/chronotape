@@ -74,6 +74,40 @@ public sealed class TapeBitmapGeneratorTests
     }
 
     [Fact]
+    public void GenerateTapeBitmap_DisplayCenterDiffersAcrossSlits()
+    {
+        TapeSpec spec = BuildDebugHighlightSpec(slitWidthPx: 36, slitHeightPx: 30, slitCenterYOffsetPx: 50);
+        spec.SegmentCharacters = "1234";
+        spec.MainCharacters = "1234";
+        spec.SlitCount = 4;
+        spec.FontPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../tape-gen/digital-7.regular.ttf"));
+
+        var displayCenters = new List<string>();
+        for (int slitIndex = 0; slitIndex < spec.SlitCount; slitIndex++)
+        {
+            TextWriter originalOut = Console.Out;
+            using var capture = new StringWriter();
+            try
+            {
+                Console.SetOut(capture);
+                using SKBitmap _ = TapeBitmapGenerator.GenerateTapeBitmap(spec, slitIndex);
+            }
+            finally
+            {
+                Console.SetOut(originalOut);
+            }
+
+            string output = capture.ToString();
+            string? centerLine = output.Split('\n').FirstOrDefault(l => l.Contains("Display center"));
+            Assert.NotNull(centerLine);
+            displayCenters.Add(centerLine!.Trim());
+        }
+
+        // Every slit must have a distinct display-center line
+        Assert.Equal(spec.SlitCount, displayCenters.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
     public void CropToOpaqueBounds_IgnoresLowAlphaFringePixels()
     {
         using var bitmap = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);

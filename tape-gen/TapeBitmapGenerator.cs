@@ -338,12 +338,13 @@ internal static class TapeBitmapGenerator
         }
 
         double tiltRadians = ProjectionDisplayTiltDegrees * (Math.PI / 180.0);
-        var displayCenter = new Point3D(0, 0, ProjectionLightDistance);
+        double slitPosition = slitCount == 1 ? 0.0 : ((double)slitIndex / (slitCount - 1)) - 0.5;
+        double displayCenterX = deadzoneApertureRect.Width * (ProjectionBaseOffsetXRatio + (ProjectionSlitSpreadXRatio * slitPosition));
+        var displayCenter = new Point3D(displayCenterX, 0, ProjectionLightDistance);
         var displayNormal = new Vector3D(0, -Math.Sin(tiltRadians), Math.Cos(tiltRadians));
         var displayUp = new Vector3D(0, Math.Cos(tiltRadians), Math.Sin(tiltRadians));
         Frame displayFrame = new(displayCenter, displayNormal, displayUp, sourceRect.Width, sourceRect.Height);
 
-        double slitPosition = slitCount == 1 ? 0.0 : ((double)slitIndex / (slitCount - 1)) - 0.5;
         double slitOffsetX = deadzoneApertureRect.Width * ProjectionSlitSpreadXRatio * slitPosition;
         Frame slitFrame = new(
             new Point3D(slitOffsetX, 0, 0),
