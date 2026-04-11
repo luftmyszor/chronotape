@@ -6,6 +6,14 @@ internal sealed class ProjectionOptions
     public string OutPath { get; set; } = string.Empty;
 }
 
+internal sealed class CharacterBitmapSample
+{
+    public char Character { get; set; }
+    public int BitmapWidth { get; set; }
+    public int BitmapHeight { get; set; }
+    public List<SampledPixel> Pixels { get; set; } = new();
+}
+
 internal sealed class SampledPixel
 {
     public int X { get; set; }
@@ -20,6 +28,12 @@ internal sealed class SlitProjectionResult
     public Point3D LightSource { get; set; }
     public int SampleCount { get; set; }
     public List<ProjectedPoint> Points { get; set; } = new();
+}
+
+internal sealed class CharacterSlitBitmap
+{
+    public char Character { get; set; }
+    public bool[][] Bitmap { get; set; } = [];
 }
 
 internal sealed class ProjectedPoint

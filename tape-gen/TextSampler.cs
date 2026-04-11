@@ -2,25 +2,36 @@ using SkiaSharp;
 
 internal static class TextSampler
 {
-    public static List<SampledPixel> RenderAndSampleText(ProjectionOptions options)
+    public static List<CharacterBitmapSample> RenderAndSampleCharacters(string fontPath, string text, int textSize, int sampleStep)
     {
-        using var typeface = SKTypeface.FromFile(options.FontPath);
+        using var typeface = SKTypeface.FromFile(fontPath);
         if (typeface is null)
         {
-            throw new InvalidOperationException($"Unable to load font file: {options.FontPath}");
+            throw new InvalidOperationException($"Unable to load font file: {fontPath}");
         }
 
         using var paint = new SKPaint
         {
             Typeface = typeface,
-            TextSize = 200,
+            TextSize = textSize,
             IsAntialias = true,
             Color = SKColors.White,
             IsStroke = false
         };
 
+        var characterBitmaps = new List<CharacterBitmapSample>(text.Length);
+        foreach (char character in text)
+        {
+            characterBitmaps.Add(RenderAndSampleCharacter(character, paint, sampleStep));
+        }
+
+        return characterBitmaps;
+    }
+
+    private static CharacterBitmapSample RenderAndSampleCharacter(char character, SKPaint paint, int sampleStep)
+    {
         SKRect bounds = default;
-        paint.MeasureText(options.Text, ref bounds);
+        paint.MeasureText(character.ToString(), ref bounds);
 
         const int padding = 8;
         int width = Math.Max(1, (int)Math.Ceiling(bounds.Width) + (padding * 2));
@@ -29,25 +40,18 @@ internal static class TextSampler
         using var bitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Transparent);
-
         float drawX = padding - bounds.Left;
         float drawY = padding - bounds.Top;
-        canvas.DrawText(options.Text, drawX, drawY, paint);
+        canvas.DrawText(character.ToString(), drawX, drawY, paint);
         canvas.Flush();
 
-        bool edgeOnly = false;
         var sampled = new List<SampledPixel>();
 
-        for (int y = 0; y < bitmap.Height; y += options.SampleStep)
+        for (int y = 0; y < bitmap.Height; y += sampleStep)
         {
-            for (int x = 0; x < bitmap.Width; x += options.SampleStep)
+            for (int x = 0; x < bitmap.Width; x += sampleStep)
             {
                 if (bitmap.GetPixel(x, y).Alpha == 0)
-                {
-                    continue;
-                }
-
-                if (edgeOnly && !IsEdgePixel(bitmap, x, y))
                 {
                     continue;
                 }
@@ -62,20 +66,13 @@ internal static class TextSampler
             }
         }
 
-        Console.WriteLine($"Sampled {sampled.Count} pixels from rendered text ({bitmap.Width}x{bitmap.Height}, step={options.SampleStep}).");
-        return sampled;
-    }
-
-    private static bool IsEdgePixel(SKBitmap bitmap, int x, int y)
-    {
-        if (x == 0 || y == 0 || x == bitmap.Width - 1 || y == bitmap.Height - 1)
+        Console.WriteLine($"Sampled {sampled.Count} pixels from rendered character '{character}' ({bitmap.Width}x{bitmap.Height}, step={sampleStep}).");
+        return new CharacterBitmapSample
         {
-            return true;
-        }
-
-        return bitmap.GetPixel(x - 1, y).Alpha == 0 ||
-               bitmap.GetPixel(x + 1, y).Alpha == 0 ||
-               bitmap.GetPixel(x, y - 1).Alpha == 0 ||
-               bitmap.GetPixel(x, y + 1).Alpha == 0;
+            Character = character,
+            BitmapWidth = width,
+            BitmapHeight = height,
+            Pixels = sampled
+        };
     }
 }
