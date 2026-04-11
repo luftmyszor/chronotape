@@ -29,6 +29,15 @@ internal static class TapeBitmapGenerator
 {
     private const char CellReferenceCharacter = '8';
     private const float MinFontSizePx = 1f;
+    private const float FontSearchUpperBoundMultiplier = 4f;
+    private const int FontSearchIterations = 30;
+    private const float DeadzoneScaleFactor = 0.95f;
+    private const float ProjectionLightDistance = 400f;
+    private const float ProjectionDisplayTiltDegrees = 10f;
+    private const float ProjectionBaseOffsetXRatio = 0.1f;
+    private const float ProjectionSlitSpreadXRatio = 0.25f;
+    private const float ProjectionBaseOffsetYRatio = 0.08f;
+    private const float ProjectionEpsilon = 1e-5f;
 
     public static SKBitmap GenerateTapeBitmap(TapeSpec spec)
     {
@@ -208,27 +217,26 @@ internal static class TapeBitmapGenerator
         float sourceWidth = sourceMask.Width;
         float sourceHeight = sourceMask.Height;
 
-        float desiredScale = 0.95f * MathF.Min(deadzoneRect.Width / sourceWidth, deadzoneRect.Height / sourceHeight);
+        float desiredScale = DeadzoneScaleFactor * MathF.Min(deadzoneRect.Width / sourceWidth, deadzoneRect.Height / sourceHeight);
         if (desiredScale <= 0f)
         {
             throw new InvalidOperationException("Deadzone projection scale is invalid.");
         }
 
-        const float lightDistance = 400f;
-        float displayDistance = lightDistance * ((1f / desiredScale) - 1f);
+        float displayDistance = ProjectionLightDistance * ((1f / desiredScale) - 1f);
         if (displayDistance <= 1f)
         {
             displayDistance = 1f;
         }
 
-        const float tiltRadians = 10f * (MathF.PI / 180f);
+        float tiltRadians = ProjectionDisplayTiltDegrees * (MathF.PI / 180f);
         Vector3 displayCenter = new(0f, 0f, displayDistance);
         Vector3 displayRight = Vector3.UnitX;
         Vector3 displayUp = new(0f, MathF.Cos(tiltRadians), MathF.Sin(tiltRadians));
-        Vector3 light = new(0f, 0f, -lightDistance);
+        Vector3 light = new(0f, 0f, -ProjectionLightDistance);
         float slitPosition = slitCount == 1 ? 0f : ((float)slitIndex / (slitCount - 1)) - 0.5f;
-        float projectedOriginX = deadzoneRect.MidX + (deadzoneRect.Width * 0.1f) + (deadzoneRect.Width * 0.25f * slitPosition);
-        float projectedOriginY = deadzoneRect.MidY - (deadzoneRect.Height * 0.08f);
+        float projectedOriginX = deadzoneRect.MidX + (deadzoneRect.Width * ProjectionBaseOffsetXRatio) + (deadzoneRect.Width * ProjectionSlitSpreadXRatio * slitPosition);
+        float projectedOriginY = deadzoneRect.MidY - (deadzoneRect.Height * ProjectionBaseOffsetYRatio);
 
         for (int y = 0; y < sourceMask.Height; y++)
         {
@@ -245,7 +253,7 @@ internal static class TapeBitmapGenerator
                 Vector3 displayPoint = displayCenter + (displayRight * u) + (displayUp * v);
 
                 float denominator = displayPoint.Z - light.Z;
-                if (MathF.Abs(denominator) < 1e-5f)
+                if (MathF.Abs(denominator) < ProjectionEpsilon)
                 {
                     continue;
                 }
@@ -284,14 +292,14 @@ internal static class TapeBitmapGenerator
     private static float FindLargestFittingCellTextSize(int targetWidth, int targetHeight, SKTypeface typeface)
     {
         float low = MinFontSizePx;
-        float high = Math.Max(targetHeight * 4f, MinFontSizePx);
+        float high = Math.Max(targetHeight * FontSearchUpperBoundMultiplier, MinFontSizePx);
 
         if (!CellFitsInTarget(MinFontSizePx, targetWidth, targetHeight, typeface))
         {
             throw new InvalidOperationException($"Glyph cell cannot fit target rectangle {targetWidth}x{targetHeight} at minimum font size {MinFontSizePx}.");
         }
 
-        for (int i = 0; i < 30; i++)
+        for (int i = 0; i < FontSearchIterations; i++)
         {
             float mid = (low + high) / 2f;
             if (CellFitsInTarget(mid, targetWidth, targetHeight, typeface))
