@@ -46,6 +46,34 @@ public sealed class TapeBitmapGeneratorTests
     }
 
     [Fact]
+    public void GenerateTapeBitmap_LogsProjectionGeometryOncePerSlit()
+    {
+        TapeSpec spec = BuildDebugHighlightSpec(slitWidthPx: 36, slitHeightPx: 30, slitCenterYOffsetPx: 50);
+        spec.SegmentCharacters = "1234";
+        spec.MainCharacters = "1234";
+        spec.SlitCount = 4;
+        spec.FontPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../tape-gen/digital-7.regular.ttf"));
+
+        TextWriter originalOut = Console.Out;
+        using var capture = new StringWriter();
+        try
+        {
+            Console.SetOut(capture);
+            using SKBitmap _ = TapeBitmapGenerator.GenerateTapeBitmap(spec, slitIndex: 2);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        string output = capture.ToString();
+        Assert.Equal(1, CountSubstring(output, "[Slit 2]"));
+        Assert.Equal(1, CountSubstring(output, "Display center"));
+        Assert.Equal(1, CountSubstring(output, "Slit center"));
+        Assert.Equal(1, CountSubstring(output, "Light source"));
+    }
+
+    [Fact]
     public void CropToOpaqueBounds_IgnoresLowAlphaFringePixels()
     {
         using var bitmap = new SKBitmap(10, 10, SKColorType.Bgra8888, SKAlphaType.Premul);
@@ -149,5 +177,18 @@ public sealed class TapeBitmapGeneratorTests
         }
 
         return new SKRectI(left, top, rightExclusive, bottomExclusive);
+    }
+
+    private static int CountSubstring(string source, string value)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 }
