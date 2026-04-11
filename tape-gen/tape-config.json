@@ -4,15 +4,15 @@
     "Offset": 1,
     "SlitCount": 4,
     "OutputPath": "./tapes/tape.png",
-    "SegmentWidthPx": 140,
-    "SegmentHeightPx": 210,
+    "SegmentWidthPx": 150,
+    "SegmentHeightPx": 300,
     "TopMarginPx": 30,
-    "MainPaddingPx": 8,
+    "MainPaddingPx": 0,
     "DeadzonePaddingPx": 2,
     "DeadzoneRectPx": {
-        "Left": 52,
-        "Top": 148,
-        "Right": 88,
-        "Bottom": 190
+        "Left": 50,
+        "Top": 160,
+        "Right": 100,
+        "Bottom": 290
     }
 }
