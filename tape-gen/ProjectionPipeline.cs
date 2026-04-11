@@ -37,11 +37,6 @@ internal static class ProjectionPipeline
             double localX = Vector3D.Dot(centerToIntersection, slitRight);
             double localY = Vector3D.Dot(centerToIntersection, slitUp);
 
-            if (Math.Abs(localX) > slitHalfWidth || Math.Abs(localY) > slitHalfHeight)
-            {
-                continue;
-            }
-
             projectedPoints.Add(new ProjectedPoint
             {
                 PixelX = pixel.X,
@@ -97,13 +92,8 @@ internal static class ProjectionPipeline
         {
             double normalizedX = (point.SlitLocalX + halfWidth) / (2.0 * halfWidth);
             double normalizedY = (halfHeight - point.SlitLocalY) / (2.0 * halfHeight);
-            int x = (int)Math.Floor(normalizedX * width);
-            int y = (int)Math.Floor(normalizedY * height);
-
-            if (x < 0 || x >= width || y < 0 || y >= height)
-            {
-                continue;
-            }
+            int x = Math.Clamp((int)Math.Floor(normalizedX * width), 0, width - 1);
+            int y = Math.Clamp((int)Math.Floor(normalizedY * height), 0, height - 1);
 
             bitmap[y][x] = true;
         }

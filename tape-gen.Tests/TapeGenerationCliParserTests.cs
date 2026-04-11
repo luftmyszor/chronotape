@@ -107,8 +107,6 @@ public sealed class TapeGenerationCliParserTests
           "TopMarginMm": 12.7,
           "MainHorizontalPaddingMm": 0.5,
           "MainVerticalPaddingMm": 0.75,
-          "DeadzoneHorizontalPaddingMm": 0.25,
-          "DeadzoneVerticalPaddingMm": 0.5,
           "SlitCenterYOffsetMm": 7.62
         }
         """);
@@ -131,11 +129,44 @@ public sealed class TapeGenerationCliParserTests
         Assert.Equal(300, result.Spec.TopMarginPx);
         Assert.Equal(12, result.Spec.MainPaddingXPx);
         Assert.Equal(18, result.Spec.MainPaddingYPx);
-        Assert.Equal(6, result.Spec.DeadzonePaddingXPx);
-        Assert.Equal(12, result.Spec.DeadzonePaddingYPx);
         Assert.Equal(420, result.Spec.SlitWidthPx);
         Assert.Equal(720, result.Spec.SlitHeightPx);
         Assert.Equal(180, result.Spec.SlitCenterYOffsetPx);
+    }
+
+    [Fact]
+    public void Parse_IgnoresLegacyDeadzonePaddingFieldsInConfig()
+    {
+        string tempDir = CreateTempDir();
+        string configPath = Path.Combine(tempDir, "tape-config.json");
+        File.WriteAllText(configPath, """
+        {
+          "SegmentCharacters": "9876",
+          "MainCharacters": "6789",
+          "Dpi": 600,
+          "MainHorizontalPaddingMm": 0.5,
+          "MainVerticalPaddingMm": 0.75,
+          "DeadzoneHorizontalPaddingMm": 50,
+          "DeadzoneVerticalPaddingMm": 50,
+          "DeadzonePaddingMm": 50
+        }
+        """);
+        string worldGeometryPath = WriteWorldGeometry(tempDir);
+
+        string[] args =
+        [
+            "--generate-tape",
+            "--tape-config", configPath,
+            "--world-geometry", worldGeometryPath
+        ];
+
+        TapeGenerationParseResult result = TapeGenerationCliParser.Parse(args, _ => null);
+
+        Assert.True(result.ShouldRun);
+        Assert.Null(result.Error);
+        Assert.NotNull(result.Spec);
+        Assert.Equal(12, result.Spec.MainPaddingXPx);
+        Assert.Equal(18, result.Spec.MainPaddingYPx);
     }
 
     [Fact]
@@ -181,8 +212,6 @@ public sealed class TapeGenerationCliParserTests
         Assert.Equal(30, result.Spec.TopMarginPx);
         Assert.Equal(8, result.Spec.MainPaddingXPx);
         Assert.Equal(8, result.Spec.MainPaddingYPx);
-        Assert.Equal(2, result.Spec.DeadzonePaddingXPx);
-        Assert.Equal(2, result.Spec.DeadzonePaddingYPx);
         Assert.Equal(36, result.Spec.SlitWidthPx);
         Assert.Equal(36, result.Spec.SlitHeightPx);
         Assert.Equal(86, result.Spec.SlitCenterYOffsetPx);

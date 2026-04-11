@@ -24,8 +24,6 @@ internal sealed class TapeSpec
 
     public int MainPaddingXPx { get; set; }
     public int MainPaddingYPx { get; set; }
-    public int DeadzonePaddingXPx { get; set; }
-    public int DeadzonePaddingYPx { get; set; }
 
     public string OutputPath { get; set; } = string.Empty;
     public bool DebugDrawRects { get; set; }
@@ -91,14 +89,13 @@ internal static class TapeBitmapGenerator
             int deadzoneIndex = (i + spec.Offset) % segmentCount;
             char deadzoneChar = spec.SegmentCharacters[deadzoneIndex];
             SKRectI absoluteDeadzoneRect = ComputeDeadzoneApertureRect(segmentRect, spec);
-            SKRectI deadzoneClipRect = InsetRectOrThrow(absoluteDeadzoneRect, spec.DeadzonePaddingXPx, spec.DeadzonePaddingYPx, "deadzone glyph");
             if (useFontFile)
             {
-                DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, deadzoneClipRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+                DrawProjectedDeadzoneGlyphUsingPipeline(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount, i);
             }
             else
             {
-                DrawProjectedDeadzoneGlyphLegacy(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, deadzoneClipRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
+                DrawProjectedDeadzoneGlyphLegacy(bitmap, deadzoneChar, mainRect, absoluteDeadzoneRect, typeface, spec.ForegroundColor, slitIndex, spec.SlitCount);
             }
 
             if (spec.DebugDrawRects)
@@ -195,11 +192,9 @@ internal static class TapeBitmapGenerator
         }
 
         if (spec.MainPaddingXPx < 0
-            || spec.MainPaddingYPx < 0
-            || spec.DeadzonePaddingXPx < 0
-            || spec.DeadzonePaddingYPx < 0)
+            || spec.MainPaddingYPx < 0)
         {
-            throw new ArgumentException("Main/deadzone horizontal and vertical paddings must be >= 0.", nameof(spec));
+            throw new ArgumentException("Main horizontal and vertical paddings must be >= 0.", nameof(spec));
         }
 
         if (spec.SlitWidthPx <= 0 || spec.SlitHeightPx <= 0)
@@ -252,7 +247,6 @@ internal static class TapeBitmapGenerator
         char glyph,
         SKRectI sourceRect,
         SKRectI deadzoneApertureRect,
-        SKRectI deadzoneClipRect,
         SKTypeface typeface,
         SKColor color,
         int slitIndex,
@@ -312,10 +306,10 @@ internal static class TapeBitmapGenerator
                 int targetX = (int)MathF.Round(projectedOriginX + projectedX);
                 int targetY = (int)MathF.Round(projectedOriginY - projectedY);
 
-                if (targetX < deadzoneClipRect.Left
-                    || targetX >= deadzoneClipRect.Right
-                    || targetY < deadzoneClipRect.Top
-                    || targetY >= deadzoneClipRect.Bottom)
+                if (targetX < deadzoneApertureRect.Left
+                    || targetX >= deadzoneApertureRect.Right
+                    || targetY < deadzoneApertureRect.Top
+                    || targetY >= deadzoneApertureRect.Bottom)
                 {
                     continue;
                 }
@@ -330,37 +324,24 @@ internal static class TapeBitmapGenerator
         char glyph,
         SKRectI sourceRect,
         SKRectI deadzoneApertureRect,
-        SKRectI deadzoneClipRect,
         SKTypeface typeface,
         SKColor color,
         int slitIndex,
-        int slitCount)
+        int slitCount,
+        int segmentIndex)
     {
         using SKBitmap sourceMask = RenderGlyphMask(glyph, sourceRect.Width, sourceRect.Height, typeface);
-        using SKBitmap sourceMaskTight = CropToOpaqueBounds(sourceMask, "deadzone");
-        List<SampledPixel> sampledPixels = SampleOpaquePixels(sourceMaskTight, ProjectionSampleStep);
+        List<SampledPixel> sampledPixels = SampleOpaquePixels(sourceMask, ProjectionSampleStep);
         if (sampledPixels.Count == 0)
         {
             return;
         }
 
-        float desiredScale = DeadzoneScaleFactor * MathF.Min(deadzoneApertureRect.Width / (float)sourceMaskTight.Width, deadzoneApertureRect.Height / (float)sourceMaskTight.Height);
-        if (desiredScale <= 0f)
-        {
-            throw new InvalidOperationException("Deadzone projection scale is invalid.");
-        }
-
-        float displayDistance = ProjectionLightDistance * ((1f / desiredScale) - 1f);
-        if (displayDistance <= MinimumDisplayDistance)
-        {
-            displayDistance = MinimumDisplayDistance;
-        }
-
         double tiltRadians = ProjectionDisplayTiltDegrees * (Math.PI / 180.0);
-        var displayCenter = new Point3D(0, 0, displayDistance);
+        var displayCenter = new Point3D(0, 0, ProjectionLightDistance);
         var displayNormal = new Vector3D(0, -Math.Sin(tiltRadians), Math.Cos(tiltRadians));
         var displayUp = new Vector3D(0, Math.Cos(tiltRadians), Math.Sin(tiltRadians));
-        Frame displayFrame = new(displayCenter, displayNormal, displayUp, sourceMaskTight.Width, sourceMaskTight.Height);
+        Frame displayFrame = new(displayCenter, displayNormal, displayUp, sourceRect.Width, sourceRect.Height);
 
         double slitPosition = slitCount == 1 ? 0.0 : ((double)slitIndex / (slitCount - 1)) - 0.5;
         double slitOffsetX = deadzoneApertureRect.Width * ProjectionSlitSpreadXRatio * slitPosition;
@@ -371,12 +352,32 @@ internal static class TapeBitmapGenerator
             deadzoneApertureRect.Width,
             deadzoneApertureRect.Height);
 
+        // Derive the light source as the convergence of rays from each display corner through the
+        // corresponding slit corner. This guarantees that any pixel inside the display projects
+        // inside the slit — no post-projection cropping is needed.
+        var cornerRays = new List<Ray>
+        {
+            new Ray(displayFrame.TopRight, new Vector3D(displayFrame.TopRight, slitFrame.TopRight)),
+            new Ray(displayFrame.TopLeft, new Vector3D(displayFrame.TopLeft, slitFrame.TopLeft)),
+            new Ray(displayFrame.BottomRight, new Vector3D(displayFrame.BottomRight, slitFrame.BottomRight)),
+            new Ray(displayFrame.BottomLeft, new Vector3D(displayFrame.BottomLeft, slitFrame.BottomLeft)),
+        };
+        if (!GeometryMath.GetClosestPointToRays(cornerRays, out Point3D lightSource))
+        {
+            throw new InvalidOperationException("Cannot compute projection light source: display and slit corners do not converge.");
+        }
+
+        Console.WriteLine($"[Segment {segmentIndex} '{glyph}' | Slit {slitIndex}]");
+        Console.WriteLine($"  Display center : ({displayFrame.Center.X:F3}, {displayFrame.Center.Y:F3}, {displayFrame.Center.Z:F3})");
+        Console.WriteLine($"  Slit center    : ({slitFrame.Center.X:F3}, {slitFrame.Center.Y:F3}, {slitFrame.Center.Z:F3})");
+        Console.WriteLine($"  Light source   : ({lightSource.X:F3}, {lightSource.Y:F3}, {lightSource.Z:F3})");
+
         SlitProjectionResult projection = ProjectionPipeline.ProjectSingleSlit(
             slitIndex,
             sampledPixels,
             displayFrame,
             slitFrame,
-            new Point3D(0, 0, -ProjectionLightDistance));
+            lightSource);
 
         bool[][] projectedBitmap = ProjectionPipeline.BuildSlitLocalBitmap(deadzoneApertureRect.Width, deadzoneApertureRect.Height, slitFrame, projection.Points);
         for (int y = 0; y < projectedBitmap.Length; y++)
@@ -390,14 +391,6 @@ internal static class TapeBitmapGenerator
 
                 int targetX = deadzoneApertureRect.Left + x;
                 int targetY = deadzoneApertureRect.Top + y;
-                if (targetX < deadzoneClipRect.Left
-                    || targetX >= deadzoneClipRect.Right
-                    || targetY < deadzoneClipRect.Top
-                    || targetY >= deadzoneClipRect.Bottom)
-                {
-                    continue;
-                }
-
                 tapeBitmap.SetPixel(targetX, targetY, color);
             }
         }
