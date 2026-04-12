@@ -391,7 +391,8 @@ public sealed class TapeGenerationCliParserTests
             "X": 0.0,
             "Y": 1.0,
             "Z": 0.0
-          }
+          },
+          "GlyphPixelSizeMm": 0.1
         }
         """);
 

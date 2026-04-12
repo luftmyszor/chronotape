@@ -17,6 +17,7 @@ internal sealed class WorldGeometryConfig
     public Point3DMmConfig DisplayPlanePointMm { get; set; } = new();
     public Vector3DConfig DisplayPlaneNormal { get; set; } = new();
     public Vector3DConfig DisplayPlaneUpDirection { get; set; } = new();
+    public double GlyphPixelSizeMm { get; set; }
 }
 
 internal sealed class Point3DMmConfig
@@ -109,7 +110,8 @@ internal static class WorldGeometryConfigLoader
             || !ValidateVector(config.SlitNormal, nameof(config.SlitNormal), out error)
             || !ValidateVector(config.SlitUpDirection, nameof(config.SlitUpDirection), out error)
             || !ValidateVector(config.DisplayPlaneNormal, nameof(config.DisplayPlaneNormal), out error)
-            || !ValidateVector(config.DisplayPlaneUpDirection, nameof(config.DisplayPlaneUpDirection), out error))
+            || !ValidateVector(config.DisplayPlaneUpDirection, nameof(config.DisplayPlaneUpDirection), out error)
+            || !ValidatePositiveMm(config.GlyphPixelSizeMm, nameof(config.GlyphPixelSizeMm), out error))
         {
             config = null;
             return false;

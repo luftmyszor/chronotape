@@ -48,7 +48,8 @@ public sealed class ProjectionCliParserTests
           "SlitUpDirection": { "X": 0.0, "Y": 1.0, "Z": 0.0 },
           "DisplayPlanePointMm": { "XMm": 0.0, "YMm": 0.0, "ZMm": 2000.0 },
           "DisplayPlaneNormal": { "X": 0.0, "Y": 0.0, "Z": 1.0 },
-          "DisplayPlaneUpDirection": { "X": 0.0, "Y": 1.0, "Z": 0.0 }
+          "DisplayPlaneUpDirection": { "X": 0.0, "Y": 1.0, "Z": 0.0 },
+          "GlyphPixelSizeMm": 0.1
         }
         """);
 

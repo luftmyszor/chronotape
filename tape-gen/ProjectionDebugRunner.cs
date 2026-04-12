@@ -44,7 +44,7 @@ internal static class ProjectionDebugRunner
             }
         }
 
-        BuildVerificationGrid(projectedDir, characterBitmaps, slits, displayedSegments, lightSources);
+        BuildVerificationGrid(projectedDir, characterBitmaps, slits, displayedSegments, lightSources, geometry.GlyphPixelSizeMm);
     }
 
     private static List<Frame> BuildSlits(Point3D origin, Vector3D direction, Vector3D normal, Vector3D up, WorldGeometryConfig geometry)
@@ -152,7 +152,8 @@ internal static class ProjectionDebugRunner
         List<CharacterBitmapSample> characterBitmaps,
         List<Frame> slits,
         List<Frame> displayedSegments,
-        Point3D?[] lightSources)
+        Point3D?[] lightSources,
+        double glyphPixelSizeMm)
     {
         if (characterBitmaps.Count == 0 || slits.Count == 0)
         {
@@ -190,7 +191,8 @@ internal static class ProjectionDebugRunner
                     glyph.Pixels,
                     slits[slitColumn],
                     displayedSegments[slitColumn],
-                    lightSources[slitColumn]!.Value);
+                    lightSources[slitColumn]!.Value,
+                    glyphPixelSizeMm);
 
                 DrawProjectedCell(grid, colLeft, rowTop, cellWidth, cellHeight, displayedSegments[slitColumn], projection.Points);
             }
