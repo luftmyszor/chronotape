@@ -164,7 +164,8 @@ internal static class ProjectionDebugRunner
         int columnCount = slits.Count;
         int rowCount = characterBitmaps.Count;
         int gridWidth = cellWidth * columnCount;
-        int gridHeight = (cellHeight * rowCount) + (Math.Max(0, rowCount - 1) * RowSeparatorThicknessPx);
+        int totalSeparatorHeight = Math.Max(0, rowCount - 1) * RowSeparatorThicknessPx;
+        int gridHeight = (cellHeight * rowCount) + totalSeparatorHeight;
 
         using var grid = new SKBitmap(gridWidth, gridHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
         using var gridCanvas = new SKCanvas(grid);
@@ -284,8 +285,8 @@ internal static class ProjectionDebugRunner
         int availableHeight = Math.Max(1, cellHeight - (CellPaddingPx * 2));
         double scale = Math.Min(availableWidth / displayWidth, availableHeight / displayHeight);
 
-        int frameWidth = Math.Max(1, Math.Min(availableWidth, (int)Math.Round(displayWidth * scale)));
-        int frameHeight = Math.Max(1, Math.Min(availableHeight, (int)Math.Round(displayHeight * scale)));
+        int frameWidth = Math.Clamp((int)Math.Round(displayWidth * scale), 1, availableWidth);
+        int frameHeight = Math.Clamp((int)Math.Round(displayHeight * scale), 1, availableHeight);
         int frameLeft = cellLeft + ((cellWidth - frameWidth) / 2);
         int frameTop = cellTop + ((cellHeight - frameHeight) / 2);
         return (frameLeft, frameTop, frameWidth, frameHeight);

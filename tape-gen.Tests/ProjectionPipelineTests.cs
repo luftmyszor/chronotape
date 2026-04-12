@@ -18,10 +18,10 @@ public sealed class ProjectionPipelineTests
             new Vector3D(0, 1, 0),
             width: 4,
             height: 4);
-        var pixels =
-        [
+        var pixels = new List<SampledPixel>
+        {
             new SampledPixel { X = 0, Y = 0, BitmapWidth = 1, BitmapHeight = 1 }
-        ];
+        };
 
         SlitProjectionResult result = ProjectionPipeline.ProjectThroughSlitGlyphToDisplay(
             slitIndex: 0,
@@ -54,10 +54,10 @@ public sealed class ProjectionPipelineTests
             new Vector3D(0, 1, 0),
             width: 4,
             height: 4);
-        var pixels =
-        [
+        var pixels = new List<SampledPixel>
+        {
             new SampledPixel { X = 1, Y = 0, BitmapWidth = 2, BitmapHeight = 2 }
-        ];
+        };
 
         SlitProjectionResult result = ProjectionPipeline.ProjectThroughSlitGlyphToDisplay(
             slitIndex: 0,
