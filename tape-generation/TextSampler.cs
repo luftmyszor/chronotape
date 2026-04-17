@@ -41,7 +41,7 @@ internal static class TextSampler
         // 2. Set a fixed width. 
         // Option A: Use the Max Character Width of the font.
         // Option B: Measure a wide character like 'W' or '8' once and reuse it.
-        int commonWidth = (int)Math.Ceiling(paint.MeasureText("W"));
+        int commonWidth = (int)Math.Ceiling(paint.MeasureText("8"));
 
         // 3. Create the bitmap with fixed dimensions
         using var bitmap = new SKBitmap(commonWidth, commonHeight, SKColorType.Bgra8888, SKAlphaType.Premul);

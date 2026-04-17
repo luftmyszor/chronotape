@@ -399,13 +399,15 @@ void GeneratePhysicalTapes(
     }
     // --------------------------
 
-
-
     int tapeWidthPx = MmToPx(Config.Tape.SegmentWidthMm);
     int segmentHeightPx = MmToPx(Config.Tape.SegmentHeightMm);
     int topMarginPx = MmToPx(Config.Tape.TopMarginMm);
 
-    int totalTapeHeightPx = topMarginPx + (mainMasks.Count * segmentHeightPx);
+    // Use the vertical padding as the distance BETWEEN segments
+    int paddingBetweenSegmentsPx = MmToPx(Config.Tape.MainVerticalPaddingMm);
+
+    // Add the padding spaces to the total tape height
+    int totalTapeHeightPx = topMarginPx + (mainMasks.Count * segmentHeightPx) + (Math.Max(0, mainMasks.Count - 1) * paddingBetweenSegmentsPx);
 
     using SKPaint debugSegmentPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Stroke, StrokeWidth = 3 };
     using SKPaint debugMainPaint = new SKPaint { Color = SKColors.Green, Style = SKPaintStyle.Stroke, StrokeWidth = 2 };
@@ -421,7 +423,8 @@ void GeneratePhysicalTapes(
 
         for (int c = 0; c < mainMasks.Count; c++)
         {
-            int segmentYStart = topMarginPx + (c * segmentHeightPx);
+            // Advance the segment start Y by both the segment height AND the padding
+            int segmentYStart = topMarginPx + (c * (segmentHeightPx + paddingBetweenSegmentsPx));
 
             if (debug)
             {
@@ -436,21 +439,18 @@ void GeneratePhysicalTapes(
             // Center horizontally exactly in the middle of the tape
             int mainX = (tapeWidthPx - mainW) / 2;
 
-            // Keep the vertical padding to push it down from the top edge
-            int mainY = segmentYStart + MmToPx(Config.Tape.MainVerticalPaddingMm);
+            // Anchor the main glyph to the segment start to preserve relative position
+            int mainY = segmentYStart;
 
             DrawMaskToCanvas(canvas, mainMask, mainX, mainY);
 
             if (debug) canvas.DrawRect(mainX, mainY, mainW, mainH, debugMainPaint);
 
-
-
             // --- 2. SAFELY PLACE DEADZONE GLYPH ---
             bool[][] deadMask = new bool[0][];
             if (c < deadzoneMasks.Count && s < deadzoneMasks[c].Count) deadMask = deadzoneMasks[(c + 1) % mainMasks.Count][s];
 
-            // The deadMask is already perfectly aligned to the 50x100mm segment bounds!
-            // No centering required. Just draw it directly at the segment's starting Y.
+            // Draw it directly at the segment's starting Y.
             DrawMaskToCanvas(canvas, deadMask, 0, segmentYStart);
 
             if (debug)
@@ -459,7 +459,6 @@ void GeneratePhysicalTapes(
                 int slitCenterAbsoluteY = segmentYStart + MmToPx(Config.Tape.SlitCenterYOffsetMm);
                 canvas.DrawLine(0, slitCenterAbsoluteY, tapeWidthPx, slitCenterAbsoluteY, debugDeadPaint);
             }
-
         }
 
         string debugSuffix = debug ? "-debug" : "";
@@ -473,7 +472,6 @@ void GeneratePhysicalTapes(
 
     Console.WriteLine($"Generated physical tapes (Debug: {debug}) at: {outputPath}");
 }
-
 // Quick helper to draw your bool arrays directly onto the SKCanvas
 void DrawMaskToCanvas(SKCanvas canvas, bool[][] mask, int offsetX, int offsetY)
 {

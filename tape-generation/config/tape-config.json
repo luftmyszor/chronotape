@@ -1,15 +1,15 @@
 {
-    "DeadzoneCharacters": "0123456789",
-    "MainCharacters": "0123456789",
+    "DeadzoneCharacters": "0123",
+    "MainCharacters": "0123",
     "Offset": 1,
     "Dpi": 200,
-    "MainGlyphFontSizeMm": 90,
-    "DeadGlyphFontSizeMm": 200,
-    "SegmentWidthMm": 50,
-    "SegmentHeightMm": 100,
+    "MainGlyphFontSizeMm": 50,
+    "DeadGlyphFontSizeMm": 360,
+    "SegmentWidthMm": 25,
+    "SegmentHeightMm": 50,
     "TopMarginMm": 5,
-    "MainHorizontalPaddingMm": 2,
-    "MainVerticalPaddingMm": 0.0,
-    "SlitCenterYOffsetMm": 25,
-    "Debug": false
+    "MainHorizontalPaddingMm": 0,
+    "MainVerticalPaddingMm": 20,
+    "SlitCenterYOffsetMm": 13.5,
+    "Debug": true
 }

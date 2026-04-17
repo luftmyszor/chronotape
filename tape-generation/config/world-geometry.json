@@ -1,16 +1,16 @@
 {
-    "SlitWidthMm": 7,
-    "SlitHeightMm": 10,
+    "SlitWidthMm": 7.5,
+    "SlitHeightMm": 15,
     "SlitCount": 4,
     "SlitSegmentCenterDistanceMm": 50.0,
-    "TapeTopHeightFromGroundMm": 130,
-    "DisplayedSegmentWidthMm": 140.0,
-    "DisplayedSegmentHeightMm": 200.0,
-    "DisplayedSegmentCenterDistanceMm": 140.0,
+    "TapeTopHeightFromGroundMm": 0,
+    "DisplayedSegmentWidthMm": 250,
+    "DisplayedSegmentHeightMm": 500.0,
+    "DisplayedSegmentCenterDistanceMm": 400.0,
     "TapeOriginMm": {
         "X": 0.0,
         "Y": 0.0,
-        "Z": 130
+        "Z": 0
     },
     "SlitDirection": {
         "X": 1.0,

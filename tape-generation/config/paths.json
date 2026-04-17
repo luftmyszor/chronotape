@@ -1,6 +1,6 @@
 {
     "TapeOutput": "./tapes/",
     "DeadzoneFont": "./config/chronotape.ttf",
-    "MainFont": "./chronotape.ttf",
+    "MainFont": "./config/chronotape.ttf",
     "Render": "./render/"
 }
