@@ -4,9 +4,9 @@
     "SlitCount": 4,
     "SlitSegmentCenterDistanceMm": 50.0,
     "TapeTopHeightFromGroundMm": 0,
-    "DisplayedSegmentWidthMm": 250,
-    "DisplayedSegmentHeightMm": 500.0,
-    "DisplayedSegmentCenterDistanceMm": 400.0,
+    "DisplayedSegmentWidthMm": 125,
+    "DisplayedSegmentHeightMm": 250.0,
+    "DisplayedSegmentCenterDistanceMm": 200.0,
     "TapeOriginMm": {
         "X": 0.0,
         "Y": 0.0,
