@@ -1,57 +1,55 @@
 #pragma once
 #include <Arduino.h>
-
-// ── Tuning constants ──────────────────────────────────────────────────────────
-constexpr uint16_t DEBOUNCE_MS   = 50;   // Stable-signal window
-constexpr uint16_t LONG_PRESS_MS = 800;  // Hold duration for a long press
-
-// ── ButtonEvent ───────────────────────────────────────────────────────────────
-enum class ButtonEvent : uint8_t {
-    NONE,
-    SHORT_PRESS,   // Button pressed and released before LONG_PRESS_MS
-    LONG_PRESS     // Button held for >= LONG_PRESS_MS (fires once per hold)
-};
+#include "Config.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InputControl
 //
-// Reads two active-low push-buttons (MODE and ADJUST) using INPUT_PULLUP.
-// Provides debouncing and distinguishes short presses from long presses.
-//
-// Typical wiring: one side of each button to the Arduino pin, other side to GND.
+// Reads BTN_COUNT active-low push-buttons (INPUT_PULLUP).
+// Provides per-button debouncing and distinguishes short presses from long
+// presses.  Button combos (BTN_A held + BTN_B short press) are detected at
+// the state-machine level in main.ino via isHeld().
 //
 // update() must be called every loop iteration.
-// After calling update(), retrieve events with getModeEvent() /
-// getAdjustEvent(); each call consumes the pending event (returns NONE until
-// the next qualifying press occurs).
+//
+// Usage:
+//   ButtonEvent ev = input.getEvent(BtnId::B);  // consumes the event
+//   bool held      = input.isHeld(BtnId::A);    // instantaneous query
+//   input.suppressLongPress(BtnId::A);           // call after a combo to
+//                                                // prevent a stray long press
 // ─────────────────────────────────────────────────────────────────────────────
 class InputControl {
 public:
-    InputControl(uint8_t modePin, uint8_t adjustPin);
+    // pins: array of BTN_COUNT button pin numbers (active-low, INPUT_PULLUP).
+    explicit InputControl(const uint8_t* pins);
 
     void begin();
 
-    // Sample button states and update internal state machines.
+    // Sample all button states; call every loop iteration.
     void update();
 
-    // Return (and clear) the most recent event for each button.
-    ButtonEvent getModeEvent();
-    ButtonEvent getAdjustEvent();
+    // Return (and clear) the most recent event for the given button.
+    ButtonEvent getEvent(BtnId btn);
+
+    // True while the given button is currently held (debounced press active).
+    bool isHeld(BtnId btn) const;
+
+    // Prevent a LONG_PRESS event from firing on the given button.
+    // Call this after detecting a combo to avoid a stray long press.
+    void suppressLongPress(BtnId btn);
 
 private:
-    struct ButtonState {
+    struct BtnState {
         uint8_t       pin;
         bool          lastRaw;       // Raw read on the previous update()
         bool          debounced;     // Stable (debounced) level
         unsigned long lastChangeMs;  // millis() when lastRaw last changed
         unsigned long pressStartMs;  // millis() when a debounced press began
-        bool          longFired;     // True once a LONG_PRESS event has fired
-        ButtonEvent   pendingEvent;  // Waiting to be consumed by caller
+        bool          longFired;     // True once LONG_PRESS has fired this hold
+        ButtonEvent   pendingEvent;  // Waiting to be consumed by the caller
     };
 
-    ButtonState _mode;
-    ButtonState _adjust;
+    BtnState _btns[BTN_COUNT];
 
-    // Process one button state machine; may set pendingEvent.
-    void processButton(ButtonState& btn);
+    void processButton(BtnState& btn);
 };
