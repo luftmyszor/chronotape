@@ -1,48 +1,44 @@
 #pragma once
 #include <Arduino.h>
-
-// ── LED operating modes ───────────────────────────────────────────────────────
-enum class LedMode : uint8_t {
-    OFF,       // LED fully off
-    ON,        // LED fully on (max brightness)
-    DIM,       // LED at a fixed reduced brightness (set via setMode)
-    BREATHING  // LED pulses smoothly between off and full brightness
-};
+#include "Config.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LedControl
 //
-// Drives a single monochromatic LED connected to a PWM-capable Arduino pin
-// using analogWrite() (0–255).
+// Drives LED_COUNT monochromatic LEDs connected to PWM-capable Arduino pins
+// using analogWrite() (0–255).  Each LED is controlled independently.
 //
-// BREATHING uses a triangle-wave envelope to minimise RAM/flash usage vs.
-// a full sine table while still producing a smooth pulsing effect.
+// Animated modes (BREATHING, PULSE, FLASH) use a periodic waveform so no
+// blocking delays are needed.  BREATHING and PULSE use a triangle wave;
+// FLASH uses a square wave.  Period constants come from Config.h.
 //
-// update() must be called every loop iteration (only does work in BREATHING
-// mode; all other modes are set-and-forget via analogWrite).
+// update() must be called every loop iteration.
 // ─────────────────────────────────────────────────────────────────────────────
 class LedControl {
 public:
-    explicit LedControl(uint8_t pin);
+    // pins: array of LED_COUNT PWM-capable pin numbers.
+    explicit LedControl(const uint8_t* pins);
 
     void begin();
 
-    // Switch to the requested mode.
-    // dimValue is only used in DIM mode (0–255, default 64 ≈ 25 %).
-    void setMode(LedMode mode, uint8_t dimValue = 64);
+    // Switch one LED to the requested mode.
+    // dimValue is only used in DIM mode (0–255, default DIM_DEFAULT ≈ 25 %).
+    void setMode(LedId id, LedMode mode, uint8_t dimValue = DIM_DEFAULT);
 
-    // Update the breathing animation; no-op for other modes.
-    // Call every loop iteration.
+    // Advance all animated LEDs; call every loop iteration.
     void update();
 
-    LedMode getMode() const { return _mode; }
+    LedMode getMode(LedId id) const;
 
 private:
-    uint8_t       _pin;
-    LedMode       _mode;
-    uint8_t       _dimValue;
-    unsigned long _breathStartMs; // millis() when the current breath cycle began
+    struct LedState {
+        uint8_t       pin;
+        LedMode       mode;
+        uint8_t       dimValue;
+        unsigned long periodStartMs;  // Reference timestamp for cycling modes
+    };
 
-    // Duration of one full breath in / breath out cycle (ms).
-    static const uint16_t BREATH_PERIOD_MS = 4000;
+    LedState _leds[LED_COUNT];
+
+    void updateLed(LedState& led, unsigned long now);
 };

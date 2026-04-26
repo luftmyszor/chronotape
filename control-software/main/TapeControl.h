@@ -1,21 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Adafruit_MCP23X17.h>
-
-// ── Hardware constants ────────────────────────────────────────────────────────
-// Number of tape/digit tracks (HH:MM → 4 motors).
-constexpr uint8_t  TAPE_COUNT       = 4;
-// Digits visible per tape (0–9).
-constexpr uint8_t  TAPE_DIGITS      = 10;
-// Full-step motor phases use 4 states.
-constexpr uint8_t  STEP_PHASES      = 4;
-
-// ── Tuning constants ─────────────────────────────────────────────────────────
-// Steps the motor must travel to advance one digit position.
-// Measure physically and adjust.
-constexpr uint16_t STEPS_PER_DIGIT  = 200;
-// Minimum milliseconds between consecutive steps (motor speed limit).
-constexpr uint16_t STEP_INTERVAL_MS = 2;
+#include "Config.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TapeControl
@@ -23,6 +9,8 @@ constexpr uint16_t STEP_INTERVAL_MS = 2;
 // Drives up to TAPE_COUNT stepper motors through a single MCP23017 I/O
 // expander.  Each motor occupies one 4-bit nibble of the expander's 16-bit
 // GPIO register (motor 0 → bits 3:0, motor 1 → bits 7:4, …).
+//
+// All constants (TAPE_COUNT, STEPS_PER_DIGIT, etc.) are pulled from Config.h.
 //
 // All movement is non-blocking: moveTo() / nudge() load a step counter; the
 // actual pulses are emitted one at a time inside update(), which must be
@@ -40,13 +28,17 @@ public:
     void moveTo(uint8_t tapeIndex, uint8_t digit);
 
     // Queue a raw step count (positive = forward, negative = backward).
-    // Used by calibration mode for fine positioning.  Does NOT update the
-    // stored digit position; call resetDigit() afterwards if needed.
+    // Used by SYNC mode for fine positioning.  Does NOT update the stored
+    // digit position; call resetDigit() or setZeroPoint() afterwards.
     void nudge(uint8_t tapeIndex, int16_t steps);
 
     // Forcibly set the logical digit for a tape without moving the motor.
-    // Call this after physically aligning a tape during calibration.
+    // Call this after physically aligning a single tape during calibration.
     void resetDigit(uint8_t tapeIndex, uint8_t digit);
+
+    // Mark the current physical position of ALL tapes as digit 0 and persist
+    // to EEPROM.  Use at the end of SYNC_MODE once all tapes are aligned.
+    void setZeroPoint();
 
     // Advance pending steps by one pulse for all active motors.
     // Call every loop iteration.
@@ -54,6 +46,10 @@ public:
 
     // True while any motor still has queued steps.
     bool isBusy() const;
+
+    // EEPROM persistence for tape digit positions.
+    void saveCalibration();
+    void loadCalibration();
 
 private:
     Adafruit_MCP23X17& _mcp;

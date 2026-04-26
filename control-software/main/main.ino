@@ -1,58 +1,93 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Chronotape — main.ino
 //
-// Orchestrates all subsystems through a simple state machine:
+// State-machine orchestrator.  All subsystems run non-blockingly; the only job
+// of loop() is to tick every subsystem and handle the resulting events.
 //
-//   NORMAL      → display current time; LED breathes
-//   SET_HOURS   → short ADJUST: increment hours;   long MODE: → SET_MINUTES
-//   SET_MINUTES → short ADJUST: increment minutes; long MODE: → CALIBRATE
-//   CALIBRATE   → short ADJUST: nudge selected tape forward one step
-//                 short MODE:   confirm tape & advance to the next one
-//                               (after tape 3, mark all digits as 0, → NORMAL)
+// State map:
 //
-// No blocking calls; all timing is managed with millis().
+//   NORMAL            Display current time.  LEDs breathe.
+//                     BTN_A long         → SET_TIME_HOURS
+//                     BTN_B short        → toggle alarm enable / disable
+//                     BTN_A held + BTN_B → SET_ALARM_MODE
+//                     alarm fires        → ALARM_RINGING
+//
+//   SET_TIME_HOURS    BTN_B short → increment hours & update display
+//                     BTN_A short → SET_TIME_MINUTES
+//                     BTN_A long or timeout → save time → NORMAL
+//
+//   SET_TIME_MINUTES  BTN_B short → increment minutes & update display
+//                     BTN_A short → save time → SET_DATE_DAY
+//                     BTN_A long or timeout → save time → NORMAL
+//
+//   SET_DATE_DAY      BTN_B short → increment day & update display
+//                     BTN_A short → SET_DATE_MONTH
+//                     BTN_A long or timeout → save date → NORMAL
+//
+//   SET_DATE_MONTH    BTN_B short → increment month & update display
+//                     BTN_A short → SET_DATE_YEAR
+//                     BTN_A long or timeout → save date → NORMAL
+//
+//   SET_DATE_YEAR     BTN_B short → increment year & update display
+//                     BTN_A short → save date → SYNC_MODE
+//                     BTN_A long or timeout → save date → NORMAL
+//
+//   SYNC_MODE         Time tracking paused.  Motors jogged manually.
+//                     BTN_B short        → nudge selected tape +1 raw step
+//                     BTN_A short        → select next tape
+//                     BTN_A held + BTN_B → setZeroPoint(), → NORMAL
+//                     BTN_A long         → exit without calibrating → NORMAL
+//
+//   SET_ALARM_MODE    Tapes show current alarm time.  Alarm LED pulses.
+//                     BTN_A short → increment alarm hour, update tapes
+//                     BTN_B short → increment alarm minute, update tapes
+//                     BTN_A long or timeout → save alarm → back to current
+//                                             time on tapes → NORMAL
+//
+//   ALARM_RINGING     Both LEDs flash rapidly.
+//                     Any button press → dismiss alarm → NORMAL
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MCP23X17.h>
 
+#include "Config.h"
 #include "TapeControl.h"
-#include "TimeControl.h"
+#include "DateTimeControl.h"
 #include "InputControl.h"
 #include "LedControl.h"
 
-// ── Pin assignments (change to match your wiring) ─────────────────────────────
-static const uint8_t PIN_LED    = 9;  // Must be a PWM-capable pin
-static const uint8_t PIN_MODE   = 2;  // MODE push-button (active-low)
-static const uint8_t PIN_ADJUST = 3;  // ADJUST push-button (active-low)
-
-// ── State machine ─────────────────────────────────────────────────────────────
+// ── Application states ────────────────────────────────────────────────────────
 enum class AppState : uint8_t {
     NORMAL,
-    SET_HOURS,
-    SET_MINUTES,
-    CALIBRATE
+    SET_TIME_HOURS,
+    SET_TIME_MINUTES,
+    SET_DATE_DAY,
+    SET_DATE_MONTH,
+    SET_DATE_YEAR,
+    SYNC_MODE,
+    SET_ALARM_MODE,
+    ALARM_RINGING
 };
 
 // ── Subsystem objects ─────────────────────────────────────────────────────────
 Adafruit_MCP23X17 mcp;
-TapeControl  tapes(mcp);
-TimeControl  clock;
-InputControl input(PIN_MODE, PIN_ADJUST);
-LedControl   led(PIN_LED);
+TapeControl       tapes(mcp);
+DateTimeControl   clock;
+InputControl      input(BTN_PINS);
+LedControl        leds(LED_PINS);
 
-AppState state       = AppState::NORMAL;
-uint8_t  calibTape   = 0; // Which tape is currently being calibrated
+// ── State variables ───────────────────────────────────────────────────────────
+static AppState      state        = AppState::NORMAL;
+static uint8_t       calibTape    = 0;
+static unsigned long inactivityMs = 0;  // millis() of last button activity
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Display helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Tape index mapping for HH:MM (most-significant digit first):
-//   tape 0 = hours tens
-//   tape 1 = hours units
-//   tape 2 = minutes tens
-//   tape 3 = minutes units
-static void updateTimeDisplay() {
+static void displayCurrentTime() {
     uint8_t h = clock.getHours();
     uint8_t m = clock.getMinutes();
     tapes.moveTo(0, h / 10);
@@ -61,27 +96,119 @@ static void updateTimeDisplay() {
     tapes.moveTo(3, m % 10);
 }
 
+static void displayAlarmTime() {
+    uint8_t ah = clock.getAlarmHour();
+    uint8_t am = clock.getAlarmMinute();
+    tapes.moveTo(0, ah / 10);
+    tapes.moveTo(1, ah % 10);
+    tapes.moveTo(2, am / 10);
+    tapes.moveTo(3, am % 10);
+}
+
+// Display day, month, or year value on the tape pair used for that field.
+// Day / month → tapes 2-3 (right pair, like the MM in HH:MM).
+// Year → all four tapes showing "20YY".
+static void displayDateDay() {
+    uint8_t d = clock.getDay();
+    tapes.moveTo(0, 0); tapes.moveTo(1, 0);
+    tapes.moveTo(2, d / 10); tapes.moveTo(3, d % 10);
+}
+
+static void displayDateMonth() {
+    uint8_t mo = clock.getMonth();
+    tapes.moveTo(0, 0); tapes.moveTo(1, 0);
+    tapes.moveTo(2, mo / 10); tapes.moveTo(3, mo % 10);
+}
+
+static void displayDateYear() {
+    uint16_t yr = clock.getYear();
+    tapes.moveTo(0, 2);
+    tapes.moveTo(1, 0);
+    tapes.moveTo(2, (uint8_t)((yr % 100) / 10));
+    tapes.moveTo(3, (uint8_t)((yr % 100) % 10));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inactivity timer helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+static void touchInactivity() {
+    inactivityMs = millis();
+}
+
+static bool inactivityExpired() {
+    return (millis() - inactivityMs) >= SET_MODE_TIMEOUT_MS;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State transitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Forward declaration needed by enterState().
+static void enterState(AppState next);
+
 static void enterState(AppState next) {
     state = next;
+    touchInactivity();
+
     switch (next) {
+
         case AppState::NORMAL:
-            led.setMode(LedMode::BREATHING);
-            updateTimeDisplay();
-            Serial.println(F("State: NORMAL"));
+            leds.setMode(LedId::STATUS, LedMode::BREATHING);
+            leds.setMode(LedId::ALARM,
+                         clock.isAlarmEnabled() ? LedMode::DIM : LedMode::OFF);
+            clock.resumeTracking();
+            displayCurrentTime();
+            Serial.println(F("→ NORMAL"));
             break;
-        case AppState::SET_HOURS:
-            led.setMode(LedMode::ON);
-            Serial.println(F("State: SET_HOURS"));
+
+        case AppState::SET_TIME_HOURS:
+            leds.setMode(LedId::STATUS, LedMode::ON);
+            // Tapes already show current time; no additional movement needed.
+            Serial.println(F("→ SET_TIME_HOURS"));
             break;
-        case AppState::SET_MINUTES:
-            led.setMode(LedMode::DIM);
-            Serial.println(F("State: SET_MINUTES"));
+
+        case AppState::SET_TIME_MINUTES:
+            leds.setMode(LedId::STATUS, LedMode::DIM);
+            Serial.println(F("→ SET_TIME_MINUTES"));
             break;
-        case AppState::CALIBRATE:
+
+        case AppState::SET_DATE_DAY:
+            leds.setMode(LedId::STATUS, LedMode::FLASH);
+            displayDateDay();
+            Serial.println(F("→ SET_DATE_DAY"));
+            break;
+
+        case AppState::SET_DATE_MONTH:
+            leds.setMode(LedId::STATUS, LedMode::FLASH);
+            displayDateMonth();
+            Serial.println(F("→ SET_DATE_MONTH"));
+            break;
+
+        case AppState::SET_DATE_YEAR:
+            leds.setMode(LedId::STATUS, LedMode::FLASH);
+            displayDateYear();
+            Serial.println(F("→ SET_DATE_YEAR"));
+            break;
+
+        case AppState::SYNC_MODE:
             calibTape = 0;
-            led.setMode(LedMode::OFF);
-            Serial.print(F("State: CALIBRATE  tape="));
+            clock.pauseTracking();
+            leds.setMode(LedId::STATUS, LedMode::OFF);
+            Serial.print(F("→ SYNC  tape="));
             Serial.println(calibTape);
+            break;
+
+        case AppState::SET_ALARM_MODE:
+            leds.setMode(LedId::STATUS, LedMode::PULSE);
+            displayAlarmTime();
+            Serial.println(F("→ SET_ALARM_MODE"));
+            break;
+
+        case AppState::ALARM_RINGING:
+            leds.setMode(LedId::STATUS, LedMode::FLASH);
+            leds.setMode(LedId::ALARM,  LedMode::FLASH);
+            Serial.println(F("→ ALARM_RINGING"));
             break;
     }
 }
@@ -89,6 +216,7 @@ static void enterState(AppState next) {
 // ─────────────────────────────────────────────────────────────────────────────
 // setup
 // ─────────────────────────────────────────────────────────────────────────────
+
 void setup() {
     Serial.begin(9600);
 
@@ -98,9 +226,10 @@ void setup() {
     }
 
     tapes.begin();
-    clock.begin(12, 0);   // Start at 12:00; update via SET_HOURS / SET_MINUTES
+    tapes.loadCalibration();
+    clock.begin();   // Loads time / date / alarm from EEPROM
     input.begin();
-    led.begin();
+    leds.begin();
 
     enterState(AppState::NORMAL);
 }
@@ -108,76 +237,175 @@ void setup() {
 // ─────────────────────────────────────────────────────────────────────────────
 // loop
 // ─────────────────────────────────────────────────────────────────────────────
+
 void loop() {
-    // ── Update all subsystems ─────────────────────────────────────────────────
+    // ── Tick all subsystems ───────────────────────────────────────────────────
     tapes.update();
     clock.update();
     input.update();
-    led.update();
+    leds.update();
 
-    // ── Propagate time changes to tapes (NORMAL mode only) ───────────────────
+    // ── In NORMAL mode, propagate time changes to the tape display ────────────
     if (state == AppState::NORMAL) {
-        bool hChanged = clock.consumeHoursChanged();
-        bool mChanged = clock.consumeMinutesChanged();
-        if (hChanged || mChanged) {
-            updateTimeDisplay();
+        bool hc = clock.consumeHoursChanged();
+        bool mc = clock.consumeMinutesChanged();
+        if (hc || mc) {
+            displayCurrentTime();
+        }
+        if (clock.consumeAlarmFired()) {
+            enterState(AppState::ALARM_RINGING);
+            return;
         }
     }
 
     // ── Read button events ────────────────────────────────────────────────────
-    ButtonEvent modeEvent   = input.getModeEvent();
-    ButtonEvent adjustEvent = input.getAdjustEvent();
+    ButtonEvent evA = input.getEvent(BtnId::A);
+    ButtonEvent evB = input.getEvent(BtnId::B);
 
-    // ── State machine transitions ─────────────────────────────────────────────
+    // Detect combo: BTN_A held while BTN_B fires a short press.
+    bool aHeld = input.isHeld(BtnId::A);
+    bool combo  = (evB == ButtonEvent::SHORT_PRESS) && aHeld;
+    if (combo) {
+        evB = ButtonEvent::NONE;           // Consume BTN_B into the combo
+        input.suppressLongPress(BtnId::A); // Prevent a stray long press on A
+    }
+
+    // ── State machine ─────────────────────────────────────────────────────────
     switch (state) {
 
+        // ── NORMAL ────────────────────────────────────────────────────────────
         case AppState::NORMAL:
-            // Long MODE → enter time-setting flow
-            if (modeEvent == ButtonEvent::LONG_PRESS) {
-                enterState(AppState::SET_HOURS);
+            if (combo) {
+                enterState(AppState::SET_ALARM_MODE);
+            } else if (evA == ButtonEvent::LONG_PRESS) {
+                enterState(AppState::SET_TIME_HOURS);
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                clock.toggleAlarmEnabled();
+                clock.saveAlarm();
+                leds.setMode(LedId::ALARM,
+                             clock.isAlarmEnabled() ? LedMode::DIM : LedMode::OFF);
             }
             break;
 
-        case AppState::SET_HOURS:
-            if (adjustEvent == ButtonEvent::SHORT_PRESS) {
+        // ── SET_TIME_HOURS ────────────────────────────────────────────────────
+        case AppState::SET_TIME_HOURS:
+            if (evA == ButtonEvent::LONG_PRESS || inactivityExpired()) {
+                clock.saveTime();
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                enterState(AppState::SET_TIME_MINUTES);
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
                 clock.incrementHours();
-                updateTimeDisplay();
-            }
-            if (modeEvent == ButtonEvent::LONG_PRESS) {
-                enterState(AppState::SET_MINUTES);
+                displayCurrentTime();
             }
             break;
 
-        case AppState::SET_MINUTES:
-            if (adjustEvent == ButtonEvent::SHORT_PRESS) {
+        // ── SET_TIME_MINUTES ──────────────────────────────────────────────────
+        case AppState::SET_TIME_MINUTES:
+            if (evA == ButtonEvent::LONG_PRESS || inactivityExpired()) {
+                clock.saveTime();
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                clock.saveTime();
+                enterState(AppState::SET_DATE_DAY);
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
                 clock.incrementMinutes();
-                updateTimeDisplay();
-            }
-            if (modeEvent == ButtonEvent::LONG_PRESS) {
-                enterState(AppState::CALIBRATE);
+                displayCurrentTime();
             }
             break;
 
-        case AppState::CALIBRATE:
-            // Short ADJUST: nudge the current tape forward by one raw step.
-            if (adjustEvent == ButtonEvent::SHORT_PRESS) {
+        // ── SET_DATE_DAY ──────────────────────────────────────────────────────
+        case AppState::SET_DATE_DAY:
+            if (evA == ButtonEvent::LONG_PRESS || inactivityExpired()) {
+                clock.saveDate();
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                enterState(AppState::SET_DATE_MONTH);
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                clock.incrementDay();
+                displayDateDay();
+            }
+            break;
+
+        // ── SET_DATE_MONTH ────────────────────────────────────────────────────
+        case AppState::SET_DATE_MONTH:
+            if (evA == ButtonEvent::LONG_PRESS || inactivityExpired()) {
+                clock.saveDate();
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                enterState(AppState::SET_DATE_YEAR);
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                clock.incrementMonth();
+                displayDateMonth();
+            }
+            break;
+
+        // ── SET_DATE_YEAR ─────────────────────────────────────────────────────
+        case AppState::SET_DATE_YEAR:
+            if (evA == ButtonEvent::LONG_PRESS || inactivityExpired()) {
+                clock.saveDate();
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                clock.saveDate();
+                enterState(AppState::SYNC_MODE);
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                clock.incrementYear();
+                displayDateYear();
+            }
+            break;
+
+        // ── SYNC_MODE ─────────────────────────────────────────────────────────
+        case AppState::SYNC_MODE:
+            if (combo) {
+                // Mark all current tape positions as digit 0 and return.
+                tapes.setZeroPoint();
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::LONG_PRESS) {
+                // Cancel: exit without marking a zero point.
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                calibTape = (calibTape + 1) % TAPE_COUNT;
+                Serial.print(F("SYNC  tape="));
+                Serial.println(calibTape);
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
                 tapes.nudge(calibTape, 1);
             }
-            // Short MODE: confirm this tape and move to the next.
-            if (modeEvent == ButtonEvent::SHORT_PRESS) {
-                tapes.resetDigit(calibTape, 0);
-                calibTape++;
-                if (calibTape >= TAPE_COUNT) {
-                    // All tapes calibrated.
-                    calibTape = 0;
-                    enterState(AppState::NORMAL);
-                } else {
-                    Serial.print(F("CALIBRATE  tape="));
-                    Serial.println(calibTape);
-                }
+            break;
+
+        // ── SET_ALARM_MODE ────────────────────────────────────────────────────
+        case AppState::SET_ALARM_MODE:
+            if (evA == ButtonEvent::LONG_PRESS || inactivityExpired()) {
+                // Save the new alarm time and restore the time display.
+                clock.saveAlarm();
+                displayCurrentTime();
+                enterState(AppState::NORMAL);
+            } else if (evA == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                clock.incrementAlarmHour();
+                displayAlarmTime();
+            } else if (evB == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                clock.incrementAlarmMinute();
+                displayAlarmTime();
             }
-            // Long MODE: cancel calibration without saving.
-            if (modeEvent == ButtonEvent::LONG_PRESS) {
+            break;
+
+        // ── ALARM_RINGING ─────────────────────────────────────────────────────
+        case AppState::ALARM_RINGING:
+            if (evA != ButtonEvent::NONE || evB != ButtonEvent::NONE) {
+                clock.dismissAlarm();
                 enterState(AppState::NORMAL);
             }
             break;

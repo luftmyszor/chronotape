@@ -1,44 +1,77 @@
 #include "LedControl.h"
 
-LedControl::LedControl(uint8_t pin)
-    : _pin(pin), _mode(LedMode::OFF), _dimValue(64), _breathStartMs(0)
-{}
+// ── Constructor ───────────────────────────────────────────────────────────────
 
-void LedControl::begin() {
-    pinMode(_pin, OUTPUT);
-    analogWrite(_pin, 0);
+LedControl::LedControl(const uint8_t* pins) {
+    for (uint8_t i = 0; i < LED_COUNT; i++) {
+        _leds[i].pin          = pins[i];
+        _leds[i].mode         = LedMode::OFF;
+        _leds[i].dimValue     = DIM_DEFAULT;
+        _leds[i].periodStartMs = 0;
+    }
 }
 
-void LedControl::setMode(LedMode mode, uint8_t dimValue) {
-    _mode     = mode;
-    _dimValue = dimValue;
+void LedControl::begin() {
+    for (uint8_t i = 0; i < LED_COUNT; i++) {
+        pinMode(_leds[i].pin, OUTPUT);
+        analogWrite(_leds[i].pin, 0);
+    }
+}
 
-    switch (_mode) {
-        case LedMode::OFF:
-            analogWrite(_pin, 0);
-            break;
-        case LedMode::ON:
-            analogWrite(_pin, 255);
-            break;
-        case LedMode::DIM:
-            analogWrite(_pin, _dimValue);
-            break;
-        case LedMode::BREATHING:
-            _breathStartMs = millis();
-            break;
+// ── Public ────────────────────────────────────────────────────────────────────
+
+void LedControl::setMode(LedId id, LedMode mode, uint8_t dimValue) {
+    uint8_t i = static_cast<uint8_t>(id);
+    if (i >= LED_COUNT) return;
+
+    LedState& led     = _leds[i];
+    led.mode          = mode;
+    led.dimValue      = dimValue;
+    led.periodStartMs = millis();
+
+    switch (mode) {
+        case LedMode::OFF: analogWrite(led.pin, 0);          break;
+        case LedMode::ON:  analogWrite(led.pin, 255);         break;
+        case LedMode::DIM: analogWrite(led.pin, led.dimValue); break;
+        default: break;  // Animated modes update in update()
     }
 }
 
 void LedControl::update() {
-    if (_mode != LedMode::BREATHING) return;
+    unsigned long now = millis();
+    for (uint8_t i = 0; i < LED_COUNT; i++) {
+        updateLed(_leds[i], now);
+    }
+}
 
-    unsigned long now   = millis();
-    // Position within the current breath cycle (0 … BREATH_PERIOD_MS-1).
-    uint16_t phase = (uint16_t)((now - _breathStartMs) % BREATH_PERIOD_MS);
+LedMode LedControl::getMode(LedId id) const {
+    uint8_t i = static_cast<uint8_t>(id);
+    if (i >= LED_COUNT) return LedMode::OFF;
+    return _leds[i].mode;
+}
 
+// ── Private ───────────────────────────────────────────────────────────────────
+
+void LedControl::updateLed(LedState& led, unsigned long now) {
+    uint16_t period;
+    switch (led.mode) {
+        case LedMode::BREATHING: period = BREATH_PERIOD_MS; break;
+        case LedMode::PULSE:     period = PULSE_PERIOD_MS;  break;
+        case LedMode::FLASH:     period = FLASH_PERIOD_MS;  break;
+        default: return;  // Static modes are already set by setMode()
+    }
+
+    uint16_t phase = (uint16_t)((now - led.periodStartMs) % period);
+
+    if (led.mode == LedMode::FLASH) {
+        // Square wave: on for the first half-period, off for the second.
+        analogWrite(led.pin, (phase < (period / 2)) ? 255 : 0);
+        return;
+    }
+
+    // Triangle-wave brightness for BREATHING and PULSE.
+    uint16_t halfPeriod = period / 2;
     uint8_t brightness;
-    uint16_t halfPeriod = BREATH_PERIOD_MS / 2;
-
     if (phase < halfPeriod) {
         // Ramp up: 0 → 255 over the first half-period.
         brightness = (uint8_t)(((uint32_t)phase * 255UL) / halfPeriod);
@@ -47,6 +80,5 @@ void LedControl::update() {
         uint16_t t = phase - halfPeriod;
         brightness = (uint8_t)(255UL - ((uint32_t)t * 255UL) / halfPeriod);
     }
-
-    analogWrite(_pin, brightness);
+    analogWrite(led.pin, brightness);
 }
