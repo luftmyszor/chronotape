@@ -3,26 +3,51 @@
 //
 // ALL hardware pins, stepper physics, button timings, LED animation speeds,
 // system timeouts, and EEPROM addresses are defined here as constexpr values.
-// Enums for button events, LED modes, and logical button actions are also
+// Enums for button events, LED modes, and button/LED identifiers are also
 // defined here so every module can share the same vocabulary.
+//
+// Hardware summary:
+//   Buttons (4, active-low with software debounce):
+//     BTN_MODE         – cycles the main system mode
+//     BTN_INC          – increments the selected value in setup modes
+//     BTN_NEXT_TAPE    – cycles the selected tape / setting field
+//     BTN_ALARM_TOGGLE – toggles alarm on/off; activates snooze when ringing
+//
+//   LEDs (5, monochromatic):
+//     LED_GREEN_1 & LED_GREEN_2 – binary mode indicator (LSB, MSB)
+//       00 = BASE_MODE, 01 = SETTING_MODE,
+//       10 = ALARM_SETTING_MODE, 11 = TAPE_ADJUST_MODE
+//     LED_BLUE   – snooze active indicator
+//     LED_RED    – alarm enabled indicator
+//     LED_YELLOW – sub-mode indicator (Time / Alarm-Hour vs Date / Alarm-Minute)
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 #include <Arduino.h>
 
 // ── Hardware Pins ─────────────────────────────────────────────────────────────
-constexpr uint8_t PIN_BTN_A      = 2;    // MODE / CONFIRM   (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_B      = 3;    // ADJUST / INCREMENT (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_LED_STATUS = 9;    // Status LED  – must be PWM-capable
-constexpr uint8_t PIN_LED_ALARM  = 10;   // Alarm LED   – must be PWM-capable
+constexpr uint8_t PIN_BTN_MODE         = 2;   // Cycles main modes    (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_INC          = 3;   // Increments value     (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_NEXT_TAPE    = 4;   // Next tape / field    (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_ALARM_TOGGLE = 5;   // Alarm toggle / snooze (active-low, INPUT_PULLUP)
+
+constexpr uint8_t PIN_LED_GREEN_1 = 6;    // Mode indicator LSB
+constexpr uint8_t PIN_LED_GREEN_2 = 7;    // Mode indicator MSB
+constexpr uint8_t PIN_LED_BLUE    = 8;    // Snooze active indicator
+constexpr uint8_t PIN_LED_RED     = 9;    // Alarm enabled indicator
+constexpr uint8_t PIN_LED_YELLOW  = 10;   // Sub-mode indicator
 
 // ── Button / LED array sizes ──────────────────────────────────────────────────
-constexpr uint8_t BTN_COUNT = 2;
-constexpr uint8_t LED_COUNT = 2;
+constexpr uint8_t BTN_COUNT = 4;
+constexpr uint8_t LED_COUNT = 5;
 
 // Pin arrays — static const so each translation unit gets its own copy
 // (avoids ODR issues when the header is included in multiple .cpp files).
-static const uint8_t BTN_PINS[BTN_COUNT] = { PIN_BTN_A, PIN_BTN_B };
-static const uint8_t LED_PINS[LED_COUNT] = { PIN_LED_STATUS, PIN_LED_ALARM };
+static const uint8_t BTN_PINS[BTN_COUNT] = {
+    PIN_BTN_MODE, PIN_BTN_INC, PIN_BTN_NEXT_TAPE, PIN_BTN_ALARM_TOGGLE
+};
+static const uint8_t LED_PINS[LED_COUNT] = {
+    PIN_LED_GREEN_1, PIN_LED_GREEN_2, PIN_LED_BLUE, PIN_LED_RED, PIN_LED_YELLOW
+};
 
 // ── Stepper Motor Physics (TapeControl) ──────────────────────────────────────
 constexpr uint8_t  TAPE_COUNT       = 4;      // HH:MM → 4 tape drives
@@ -35,14 +60,12 @@ constexpr uint16_t STEP_INTERVAL_MS = 2;      // Min. ms between consecutive ste
 constexpr uint16_t DEBOUNCE_MS   = 50;    // Debounce settling time (ms)
 constexpr uint16_t LONG_PRESS_MS = 800;   // Hold duration for a long press (ms)
 
-// ── LED Animation Speeds (LedControl) ────────────────────────────────────────
-constexpr uint16_t BREATH_PERIOD_MS = 4000;   // Full breath cycle in NORMAL mode
-constexpr uint16_t PULSE_PERIOD_MS  = 2000;   // Slow pulse for SET_ALARM_MODE
-constexpr uint16_t FLASH_PERIOD_MS  = 200;    // Rapid flash period for alarm ring
-constexpr uint8_t  DIM_DEFAULT      = 64;     // Default dim brightness (0–255, ≈ 25 %)
+// ── LED Animation Speed (LedControl) ─────────────────────────────────────────
+constexpr uint16_t FLASH_PERIOD_MS = 200;   // Rapid flash period for alarm ringing
 
 // ── System Timeouts ───────────────────────────────────────────────────────────
-constexpr uint32_t SET_MODE_TIMEOUT_MS = 10000UL;  // Auto-exit setup modes after 10 s
+constexpr uint32_t SET_MODE_TIMEOUT_MS = 10000UL;    // Auto-exit setup modes after 10 s
+constexpr uint32_t SNOOZE_DURATION_MS  = 300000UL;   // Snooze duration: 5 minutes
 
 // ── EEPROM Address Map ────────────────────────────────────────────────────────
 // Total bytes used: 8 + TAPE_COUNT = 12
@@ -57,7 +80,12 @@ constexpr uint8_t EEPROM_DATE_YEAR     = 7;   // 1 byte  (years since 2000; 25 �
 constexpr uint8_t EEPROM_TAPE_BASE     = 8;   // TAPE_COUNT bytes: currentDigit[0..N-1]
 
 // ── Button Identifiers ────────────────────────────────────────────────────────
-enum class BtnId : uint8_t { A = 0, B = 1 };
+enum class BtnId : uint8_t {
+    MODE         = 0,   // Cycles main modes
+    INC          = 1,   // Increments the selected value
+    NEXT_TAPE    = 2,   // Cycles selected tape / setting field
+    ALARM_TOGGLE = 3    // Toggles alarm on/off; snoozes when ringing
+};
 
 // ── Raw Button Events (produced by InputControl) ──────────────────────────────
 enum class ButtonEvent : uint8_t {
@@ -67,34 +95,17 @@ enum class ButtonEvent : uint8_t {
 };
 
 // ── LED Identifiers ───────────────────────────────────────────────────────────
-enum class LedId : uint8_t { STATUS = 0, ALARM = 1 };
+enum class LedId : uint8_t {
+    GREEN_1 = 0,   // Mode display LSB
+    GREEN_2 = 1,   // Mode display MSB
+    BLUE    = 2,   // Snooze active indicator
+    RED     = 3,   // Alarm enabled indicator
+    YELLOW  = 4    // Sub-mode indicator
+};
 
 // ── LED Operating Modes ───────────────────────────────────────────────────────
 enum class LedMode : uint8_t {
-    OFF,        // Fully off
-    ON,         // Fully on (max brightness)
-    DIM,        // Fixed reduced brightness (set via dimValue parameter)
-    BREATHING,  // Slow triangle-wave pulse — NORMAL mode status
-    PULSE,      // Slow triangle-wave pulse — SET_ALARM_MODE indicator
-    FLASH       // Rapid square-wave on/off — ALARM_RINGING indicator
-};
-
-// ── Logical Button Actions ────────────────────────────────────────────────────
-// Defined here for documentation; the state machine in main.ino maps raw
-// ButtonEvents + isHeld() queries to these logical actions.
-enum class ButtonAction : uint8_t {
-    NONE,
-    ACTION_TOGGLE_ALARM,      // BTN_B short in NORMAL      → toggle alarm on/off
-    ACTION_ENTER_SET_TIME,    // BTN_A long  in NORMAL      → enter time-setting flow
-    ACTION_ENTER_ALARM_SET,   // BTN_A held + BTN_B short in NORMAL
-    ACTION_INCREMENT,         // BTN_B short in SET_TIME / SET_DATE → increment field
-    ACTION_CONFIRM_FIELD,     // BTN_A short in SET_TIME / SET_DATE → advance to next field
-    ACTION_CANCEL_MODE,       // BTN_A long  in any setup mode      → return to NORMAL
-    ACTION_INCREMENT_HOUR,    // BTN_A short in SET_ALARM_MODE
-    ACTION_INCREMENT_MINUTE,  // BTN_B short in SET_ALARM_MODE
-    ACTION_SAVE_ALARM,        // BTN_A long  in SET_ALARM_MODE → save + exit
-    ACTION_NUDGE,             // BTN_B short in SYNC_MODE → nudge current tape +1 step
-    ACTION_NEXT_TAPE,         // BTN_A short in SYNC_MODE → advance to next tape
-    ACTION_SET_ZERO,          // BTN_A held + BTN_B short in SYNC_MODE → calibrate
-    ACTION_DISMISS_ALARM      // Any press in ALARM_RINGING_MODE → stop alarm
+    OFF,    // Fully off
+    ON,     // Fully on
+    FLASH   // Rapid square-wave on/off — alarm ringing indicator
 };
