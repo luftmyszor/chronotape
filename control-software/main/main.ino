@@ -8,32 +8,32 @@
 //
 //   BASE_MODE (00)
 //     Tapes display current time.
-//     BTN_MODE short       → SETTING_MODE
+//     BTN_MODE             → SETTING_MODE
 //     BTN_ALARM_TOGGLE     → toggle alarm on/off (Red LED reflects state)
-//     alarm fires          → alarm ringing (Green+Red LEDs flash rapidly)
+//     alarm fires          → alarm ringing (Green+Red LEDs flash, Buzzer on)
 //       BTN_ALARM_TOGGLE   → snooze for SNOOZE_DURATION_MS (Blue LED on)
 //       BTN_MODE / BTN_INC / BTN_NEXT_TAPE → dismiss alarm permanently
 //
 //   SETTING_MODE (01)
-//     BTN_NEXT_TAPE cycles the active field: Hours → Minutes → Day → Month → Year
-//     Yellow LED on = Time field (Hours/Minutes) active
-//     Blue   LED on = Date field (Day/Month) active
-//     Red    LED on = Year field active
-//     BTN_INC       → increment selected field; tapes jog to show new value
-//     BTN_MODE      → save time+date → ALARM_SETTING_MODE
-//     Inactivity    → save time+date → BASE_MODE
+//     Sub-modes: TIME → DATE → YEAR, cycled when BTN_NEXT_TAPE wraps Tape4→Tape1.
+//     Blue LED: OFF = Time, BLINK = Date, ON = Year
+//     Tapes show the four digits of the current sub-mode value.
+//     BTN_NEXT_TAPE → advance selected tape (0→1→2→3→0); wrapping advances sub-mode.
+//     BTN_INC       → increment the digit on the selected tape (0–9).
+//     BTN_MODE      → commit edits → ALARM_SETTING_MODE
+//     Inactivity    → commit edits → BASE_MODE
 //
 //   ALARM_SETTING_MODE (10)
-//     Tapes show current alarm time.
-//     BTN_NEXT_TAPE → toggle between Hour (Yellow on) and Minute (Blue on)
-//     BTN_INC       → increment selected alarm field; tapes jog
-//     BTN_MODE      → save alarm → TAPE_ADJUST_MODE
-//     Inactivity    → save alarm → BASE_MODE
+//     Tapes show the alarm time (four digits: AH/10, AH%10, AM/10, AM%10).
+//     BTN_NEXT_TAPE → cycle selected tape 0→1→2→3→0.
+//     BTN_INC       → increment the digit on the selected tape (0–9).
+//     BTN_MODE      → commit alarm time → TAPE_ADJUST_MODE
+//     Inactivity    → commit alarm time → BASE_MODE
 //
 //   TAPE_ADJUST_MODE (11)
 //     Time tracking paused.  Tapes stay at current physical position.
-//     BTN_NEXT_TAPE → select next tape/motor (cycles 0–3)
-//     BTN_INC       → nudge selected motor +1 raw step for fine-tuning
+//     BTN_NEXT_TAPE → select next tape/motor (cycles 0–3).
+//     BTN_INC       → nudge selected motor +1 raw step for fine alignment.
 //     BTN_MODE      → setZeroPoint() on all tapes → BASE_MODE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@
 #include "TapeControl.h"
 #include "DateTimeControl.h"
 #include "InputControl.h"
-#include "LedControl.h"
+#include "FeedbackControl.h"
 
 // ── Application modes ─────────────────────────────────────────────────────────
 enum class AppMode : uint8_t {
@@ -55,112 +55,34 @@ enum class AppMode : uint8_t {
     TAPE_ADJUST_MODE   = 3    // 11 – manual tape calibration
 };
 
-// ── Setting sub-fields (used in SETTING_MODE) ─────────────────────────────────
-enum class SettingField : uint8_t { HOURS, MINUTES, DAY, MONTH, YEAR };
-
-// ── Alarm setting sub-fields (used in ALARM_SETTING_MODE) ─────────────────────
-enum class AlarmField : uint8_t { HOUR, MINUTE };
+// ── Setting sub-modes (used in SETTING_MODE) ──────────────────────────────────
+enum class SettingSubMode : uint8_t { TIME_SUB, DATE_SUB, YEAR_SUB };
 
 // ── Subsystem objects ─────────────────────────────────────────────────────────
-Adafruit_MCP23X17 mcp;
-TapeControl       tapes(mcp);
-DateTimeControl   clock;
-InputControl      input(BTN_PINS);
-LedControl        leds(LED_PINS);
+Adafruit_MCP23X17  mcp;
+TapeControl        tapes(mcp);
+DateTimeControl    dt;
+InputControl       input(BTN_PINS);
+FeedbackControl    feedback(LED_PINS, PIN_BUZZER);
 
 // ── State variables ───────────────────────────────────────────────────────────
-static AppMode       appMode       = AppMode::BASE_MODE;
-static bool          alarmRinging  = false;
-static bool          snoozeActive  = false;
-static unsigned long snoozeUntilMs = 0;
-static SettingField  settingField  = SettingField::HOURS;
-static AlarmField    alarmField    = AlarmField::HOUR;
-static uint8_t       calibTape     = 0;
-static unsigned long inactivityMs  = 0;
+static AppMode        appMode        = AppMode::BASE_MODE;
+static bool           alarmRinging   = false;
+static bool           snoozeActive   = false;
+static unsigned long  snoozeUntilMs  = 0;
+static unsigned long  inactivityMs   = 0;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LED helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// SETTING_MODE state
+static SettingSubMode settingSubMode = SettingSubMode::TIME_SUB;
+static uint8_t        selectedTape   = 0;
+static uint8_t        editDigits[TAPE_COUNT];
 
-// Reflect current mode as a 2-bit binary value on the Green LED pair.
-static void updateModeLeds() {
-    uint8_t val = static_cast<uint8_t>(appMode);
-    leds.setMode(LedId::GREEN_1, (val & 0x01) ? LedMode::ON : LedMode::OFF);
-    leds.setMode(LedId::GREEN_2, (val & 0x02) ? LedMode::ON : LedMode::OFF);
-}
+// ALARM_SETTING_MODE state
+static uint8_t        alarmSelectedTape = 0;
+static uint8_t        alarmEditDigits[TAPE_COUNT];
 
-// Light Yellow, Blue, or Red to show the active setting sub-field group.
-static void updateSettingFieldLeds() {
-    bool isTime = (settingField == SettingField::HOURS   ||
-                   settingField == SettingField::MINUTES);
-    bool isDate = (settingField == SettingField::DAY     ||
-                   settingField == SettingField::MONTH);
-    bool isYear = (settingField == SettingField::YEAR);
-    leds.setMode(LedId::YELLOW, isTime ? LedMode::ON : LedMode::OFF);
-    leds.setMode(LedId::BLUE,   isDate ? LedMode::ON : LedMode::OFF);
-    leds.setMode(LedId::RED,    isYear ? LedMode::ON : LedMode::OFF);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Display helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-static void displayCurrentTime() {
-    uint8_t h = clock.getHours();
-    uint8_t m = clock.getMinutes();
-    tapes.moveTo(0, h / 10);
-    tapes.moveTo(1, h % 10);
-    tapes.moveTo(2, m / 10);
-    tapes.moveTo(3, m % 10);
-}
-
-static void displayAlarmTime() {
-    uint8_t ah = clock.getAlarmHour();
-    uint8_t am = clock.getAlarmMinute();
-    tapes.moveTo(0, ah / 10);
-    tapes.moveTo(1, ah % 10);
-    tapes.moveTo(2, am / 10);
-    tapes.moveTo(3, am % 10);
-}
-
-// Jog tapes to show the value for the current setting sub-field.
-// Time fields: left pair (HH) or right pair (MM); date/year similarly.
-static void displaySettingField() {
-    switch (settingField) {
-        case SettingField::HOURS: {
-            uint8_t h = clock.getHours();
-            tapes.moveTo(0, h / 10); tapes.moveTo(1, h % 10);
-            tapes.moveTo(2, 0);      tapes.moveTo(3, 0);
-            break;
-        }
-        case SettingField::MINUTES: {
-            uint8_t m = clock.getMinutes();
-            tapes.moveTo(0, 0);      tapes.moveTo(1, 0);
-            tapes.moveTo(2, m / 10); tapes.moveTo(3, m % 10);
-            break;
-        }
-        case SettingField::DAY: {
-            uint8_t d = clock.getDay();
-            tapes.moveTo(0, 0); tapes.moveTo(1, 0);
-            tapes.moveTo(2, d / 10); tapes.moveTo(3, d % 10);
-            break;
-        }
-        case SettingField::MONTH: {
-            uint8_t mo = clock.getMonth();
-            tapes.moveTo(0, 0); tapes.moveTo(1, 0);
-            tapes.moveTo(2, mo / 10); tapes.moveTo(3, mo % 10);
-            break;
-        }
-        case SettingField::YEAR: {
-            uint16_t yr = clock.getYear();
-            tapes.moveTo(0, 2);                              // '20YY' century prefix: tens = 2
-            tapes.moveTo(1, 0);                              // '20YY' century prefix: ones = 0
-            tapes.moveTo(2, (uint8_t)((yr % 100) / 10));
-            tapes.moveTo(3, (uint8_t)((yr % 100) % 10));
-            break;
-        }
-    }
-}
+// TAPE_ADJUST_MODE state
+static uint8_t        calibTape = 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inactivity timer helpers
@@ -175,21 +97,122 @@ static bool inactivityExpired() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SETTING_MODE helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Load editDigits from the current clock value for the active sub-mode.
+static void loadEditDigitsFromClock() {
+    switch (settingSubMode) {
+        case SettingSubMode::TIME_SUB: {
+            uint8_t h = dt.getHours(), m = dt.getMinutes();
+            editDigits[0] = h / 10; editDigits[1] = h % 10;
+            editDigits[2] = m / 10; editDigits[3] = m % 10;
+            break;
+        }
+        case SettingSubMode::DATE_SUB: {
+            uint8_t d = dt.getDay(), mo = dt.getMonth();
+            editDigits[0] = d  / 10; editDigits[1] = d  % 10;
+            editDigits[2] = mo / 10; editDigits[3] = mo % 10;
+            break;
+        }
+        case SettingSubMode::YEAR_SUB: {
+            uint16_t yr = dt.getYear();
+            editDigits[0] = (yr / 1000) % 10;
+            editDigits[1] = (yr / 100)  % 10;
+            editDigits[2] = (yr / 10)   % 10;
+            editDigits[3] =  yr         % 10;
+            break;
+        }
+    }
+}
+
+// Commit editDigits to the clock for the current sub-mode.
+static void commitEditDigits() {
+    switch (settingSubMode) {
+        case SettingSubMode::TIME_SUB: {
+            uint8_t h = editDigits[0] * 10 + editDigits[1];
+            uint8_t m = editDigits[2] * 10 + editDigits[3];
+            if (h > 23) h = 23;
+            if (m > 59) m = 59;
+            dt.setTime(h, m);
+            break;
+        }
+        case SettingSubMode::DATE_SUB: {
+            uint8_t d  = editDigits[0] * 10 + editDigits[1];
+            uint8_t mo = editDigits[2] * 10 + editDigits[3];
+            if (mo < 1 || mo > 12) mo = 1;
+            if (d  < 1 || d  > 31) d  = 1;
+            dt.setDate(d, mo, dt.getYear());
+            break;
+        }
+        case SettingSubMode::YEAR_SUB: {
+            uint16_t yr = (uint16_t)editDigits[0] * 1000
+                        + (uint16_t)editDigits[1] * 100
+                        + (uint16_t)editDigits[2] * 10
+                        +           editDigits[3];
+            if (yr < 2000 || yr > 2099) yr = 2025;
+            dt.setDate(dt.getDay(), dt.getMonth(), yr);
+            break;
+        }
+    }
+}
+
+// Advance to the next sub-mode, committing the current edits first.
+static void advanceSettingSubMode() {
+    commitEditDigits();
+    switch (settingSubMode) {
+        case SettingSubMode::TIME_SUB:
+            settingSubMode = SettingSubMode::DATE_SUB;
+            feedback.setMode(LedId::BLUE, LedMode::BLINK);
+            break;
+        case SettingSubMode::DATE_SUB:
+            settingSubMode = SettingSubMode::YEAR_SUB;
+            feedback.setMode(LedId::BLUE, LedMode::ON);
+            break;
+        case SettingSubMode::YEAR_SUB:
+            settingSubMode = SettingSubMode::TIME_SUB;
+            feedback.setMode(LedId::BLUE, LedMode::OFF);
+            break;
+    }
+    loadEditDigitsFromClock();
+    for (uint8_t i = 0; i < TAPE_COUNT; i++) {
+        tapes.moveTo(i, editDigits[i]);
+    }
+    selectedTape = 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALARM_SETTING_MODE helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+static void loadAlarmEditDigits() {
+    uint8_t ah = dt.getAlarmHour(), am = dt.getAlarmMinute();
+    alarmEditDigits[0] = ah / 10; alarmEditDigits[1] = ah % 10;
+    alarmEditDigits[2] = am / 10; alarmEditDigits[3] = am % 10;
+}
+
+static void commitAlarmEditDigits() {
+    uint8_t ah = alarmEditDigits[0] * 10 + alarmEditDigits[1];
+    uint8_t am = alarmEditDigits[2] * 10 + alarmEditDigits[3];
+    if (ah > 23) ah = 23;
+    if (am > 59) am = 59;
+    dt.setAlarm(ah, am);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Mode transitions
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Forward declaration needed by enterMode().
 static void enterMode(AppMode next);
 
-// Persist state and perform any cleanup when leaving the current mode.
+// Commit any pending edits when leaving a setup mode.
 static void exitCurrentMode() {
     switch (appMode) {
         case AppMode::SETTING_MODE:
-            clock.saveTime();
-            clock.saveDate();
+            commitEditDigits();
             break;
         case AppMode::ALARM_SETTING_MODE:
-            clock.saveAlarm();
+            commitAlarmEditDigits();
             break;
         case AppMode::TAPE_ADJUST_MODE:
             tapes.setZeroPoint();
@@ -202,43 +225,49 @@ static void exitCurrentMode() {
 static void enterMode(AppMode next) {
     exitCurrentMode();
     appMode = next;
-    updateModeLeds();
+    feedback.setModeDisplay(static_cast<uint8_t>(next));
     touchInactivity();
 
     switch (next) {
 
         case AppMode::BASE_MODE:
             alarmRinging = false;
-            leds.setMode(LedId::YELLOW, LedMode::OFF);
-            leds.setMode(LedId::BLUE,   snoozeActive ? LedMode::ON : LedMode::OFF);
-            leds.setMode(LedId::RED,    clock.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
-            clock.resumeTracking();
-            displayCurrentTime();
+            feedback.setBuzzerActive(false);
+            feedback.setMode(LedId::BLUE, snoozeActive ? LedMode::ON : LedMode::OFF);
+            feedback.setMode(LedId::RED,  dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
+            dt.resumeTracking();
+            // Refresh tapes with current time.
+            tapes.moveTo(0, dt.getHours()   / 10);
+            tapes.moveTo(1, dt.getHours()   % 10);
+            tapes.moveTo(2, dt.getMinutes() / 10);
+            tapes.moveTo(3, dt.getMinutes() % 10);
             Serial.println(F("→ BASE_MODE"));
             break;
 
         case AppMode::SETTING_MODE:
-            settingField = SettingField::HOURS;
-            updateSettingFieldLeds();
-            displaySettingField();
+            settingSubMode = SettingSubMode::TIME_SUB;
+            selectedTape   = 0;
+            feedback.setMode(LedId::BLUE, LedMode::OFF);  // OFF = Time sub-mode
+            feedback.setMode(LedId::RED,  LedMode::OFF);
+            loadEditDigitsFromClock();
+            for (uint8_t i = 0; i < TAPE_COUNT; i++) tapes.moveTo(i, editDigits[i]);
             Serial.println(F("→ SETTING_MODE"));
             break;
 
         case AppMode::ALARM_SETTING_MODE:
-            alarmField = AlarmField::HOUR;
-            leds.setMode(LedId::YELLOW, LedMode::ON);   // Hour selected
-            leds.setMode(LedId::BLUE,   LedMode::OFF);
-            leds.setMode(LedId::RED,    LedMode::OFF);
-            displayAlarmTime();
+            alarmSelectedTape = 0;
+            feedback.setMode(LedId::BLUE, LedMode::OFF);
+            feedback.setMode(LedId::RED,  LedMode::OFF);
+            loadAlarmEditDigits();
+            for (uint8_t i = 0; i < TAPE_COUNT; i++) tapes.moveTo(i, alarmEditDigits[i]);
             Serial.println(F("→ ALARM_SETTING_MODE"));
             break;
 
         case AppMode::TAPE_ADJUST_MODE:
             calibTape = 0;
-            clock.pauseTracking();
-            leds.setMode(LedId::YELLOW, LedMode::OFF);
-            leds.setMode(LedId::BLUE,   LedMode::OFF);
-            leds.setMode(LedId::RED,    LedMode::OFF);
+            dt.pauseTracking();
+            feedback.setMode(LedId::BLUE, LedMode::OFF);
+            feedback.setMode(LedId::RED,  LedMode::OFF);
             Serial.print(F("→ TAPE_ADJUST_MODE  tape="));
             Serial.println(calibTape);
             break;
@@ -258,10 +287,9 @@ void setup() {
     }
 
     tapes.begin();
-    tapes.loadCalibration();
-    clock.begin();   // Loads time / date / alarm from EEPROM
+    dt.begin();
     input.begin();
-    leds.begin();
+    feedback.begin();
 
     enterMode(AppMode::BASE_MODE);
 }
@@ -273,34 +301,37 @@ void setup() {
 void loop() {
     // ── Tick all subsystems ───────────────────────────────────────────────────
     tapes.update();
-    clock.update();
+    dt.update();
     input.update();
-    leds.update();
+    feedback.update();
 
     // ── Snooze expiry check ───────────────────────────────────────────────────
     if (snoozeActive && (millis() >= snoozeUntilMs)) {
         snoozeActive = false;
         alarmRinging = true;
-        // Flash Green pair and Red to signal re-fired alarm.
-        leds.setMode(LedId::GREEN_1, LedMode::FLASH);
-        leds.setMode(LedId::GREEN_2, LedMode::FLASH);
-        leds.setMode(LedId::BLUE,    LedMode::OFF);
-        leds.setMode(LedId::RED,     LedMode::FLASH);
+        feedback.setModeDisplay(static_cast<uint8_t>(appMode));
+        feedback.setMode(LedId::BLUE, LedMode::OFF);
+        feedback.setMode(LedId::RED,  LedMode::FLASH);
+        feedback.setBuzzerActive(true);
         Serial.println(F("Snooze expired → ALARM"));
     }
 
     // ── Propagate time changes to tapes in BASE_MODE ──────────────────────────
     if (appMode == AppMode::BASE_MODE && !alarmRinging && !snoozeActive) {
-        bool hc = clock.consumeHoursChanged();
-        bool mc = clock.consumeMinutesChanged();
+        bool hc = dt.consumeHoursChanged();
+        bool mc = dt.consumeMinutesChanged();
         if (hc || mc) {
-            displayCurrentTime();
+            tapes.moveTo(0, dt.getHours()   / 10);
+            tapes.moveTo(1, dt.getHours()   % 10);
+            tapes.moveTo(2, dt.getMinutes() / 10);
+            tapes.moveTo(3, dt.getMinutes() % 10);
         }
-        if (clock.consumeAlarmFired()) {
+        if (dt.consumeAlarmFired()) {
             alarmRinging = true;
-            leds.setMode(LedId::GREEN_1, LedMode::FLASH);
-            leds.setMode(LedId::GREEN_2, LedMode::FLASH);
-            leds.setMode(LedId::RED,     LedMode::FLASH);
+            feedback.setMode(LedId::GREEN_1, LedMode::FLASH);
+            feedback.setMode(LedId::GREEN_2, LedMode::FLASH);
+            feedback.setMode(LedId::RED,     LedMode::FLASH);
+            feedback.setBuzzerActive(true);
             Serial.println(F("ALARM RINGING"));
         }
     }
@@ -318,34 +349,35 @@ void loop() {
         case AppMode::BASE_MODE:
             if (alarmRinging) {
                 if (evAlarm == ButtonEvent::SHORT_PRESS) {
-                    // Activate snooze: dismiss alarm temporarily.
-                    clock.dismissAlarm();
+                    // Activate snooze: pause alarm temporarily.
+                    dt.dismissAlarm();
                     alarmRinging  = false;
                     snoozeActive  = true;
                     snoozeUntilMs = millis() + SNOOZE_DURATION_MS;
-                    updateModeLeds();   // Restore Green LEDs to steady 00
-                    leds.setMode(LedId::BLUE, LedMode::ON);
-                    leds.setMode(LedId::RED,  clock.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
+                    feedback.setBuzzerActive(false);
+                    feedback.setModeDisplay(static_cast<uint8_t>(appMode));
+                    feedback.setMode(LedId::BLUE, LedMode::ON);
+                    feedback.setMode(LedId::RED,  dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
                     Serial.println(F("Snooze activated"));
                 } else if (evMode     == ButtonEvent::SHORT_PRESS ||
                            evInc      == ButtonEvent::SHORT_PRESS ||
                            evNextTape == ButtonEvent::SHORT_PRESS) {
                     // Dismiss alarm permanently.
-                    clock.dismissAlarm();
+                    dt.dismissAlarm();
                     alarmRinging = false;
-                    updateModeLeds();
-                    leds.setMode(LedId::RED, clock.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
+                    feedback.setBuzzerActive(false);
+                    feedback.setModeDisplay(static_cast<uint8_t>(appMode));
+                    feedback.setMode(LedId::RED, dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
                     Serial.println(F("Alarm dismissed"));
                 }
             } else {
                 if (evMode == ButtonEvent::SHORT_PRESS) {
                     enterMode(AppMode::SETTING_MODE);
                 } else if (evAlarm == ButtonEvent::SHORT_PRESS) {
-                    clock.toggleAlarmEnabled();
-                    clock.saveAlarm();
-                    leds.setMode(LedId::RED, clock.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
+                    dt.toggleAlarmEnabled();
+                    feedback.setMode(LedId::RED, dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
                     Serial.print(F("Alarm "));
-                    Serial.println(clock.isAlarmEnabled() ? F("ON") : F("OFF"));
+                    Serial.println(dt.isAlarmEnabled() ? F("ON") : F("OFF"));
                 }
             }
             break;
@@ -358,25 +390,16 @@ void loop() {
                 enterMode(AppMode::BASE_MODE);
             } else if (evNextTape == ButtonEvent::SHORT_PRESS) {
                 touchInactivity();
-                switch (settingField) {
-                    case SettingField::HOURS:   settingField = SettingField::MINUTES; break;
-                    case SettingField::MINUTES: settingField = SettingField::DAY;     break;
-                    case SettingField::DAY:     settingField = SettingField::MONTH;   break;
-                    case SettingField::MONTH:   settingField = SettingField::YEAR;    break;
-                    case SettingField::YEAR:    settingField = SettingField::HOURS;   break;
+                if (selectedTape < TAPE_COUNT - 1) {
+                    selectedTape++;
+                } else {
+                    selectedTape = 0;
+                    advanceSettingSubMode();
                 }
-                updateSettingFieldLeds();
-                displaySettingField();
             } else if (evInc == ButtonEvent::SHORT_PRESS) {
                 touchInactivity();
-                switch (settingField) {
-                    case SettingField::HOURS:   clock.incrementHours();   break;
-                    case SettingField::MINUTES: clock.incrementMinutes(); break;
-                    case SettingField::DAY:     clock.incrementDay();     break;
-                    case SettingField::MONTH:   clock.incrementMonth();   break;
-                    case SettingField::YEAR:    clock.incrementYear();    break;
-                }
-                displaySettingField();
+                editDigits[selectedTape] = (editDigits[selectedTape] + 1) % TAPE_DIGITS;
+                tapes.moveTo(selectedTape, editDigits[selectedTape]);
             }
             break;
 
@@ -388,25 +411,19 @@ void loop() {
                 enterMode(AppMode::BASE_MODE);
             } else if (evNextTape == ButtonEvent::SHORT_PRESS) {
                 touchInactivity();
-                alarmField = (alarmField == AlarmField::HOUR)
-                             ? AlarmField::MINUTE
-                             : AlarmField::HOUR;
-                leds.setMode(LedId::YELLOW,
-                             (alarmField == AlarmField::HOUR) ? LedMode::ON : LedMode::OFF);
-                leds.setMode(LedId::BLUE,
-                             (alarmField == AlarmField::MINUTE) ? LedMode::ON : LedMode::OFF);
+                alarmSelectedTape = (alarmSelectedTape + 1) % TAPE_COUNT;
             } else if (evInc == ButtonEvent::SHORT_PRESS) {
                 touchInactivity();
-                if (alarmField == AlarmField::HOUR) clock.incrementAlarmHour();
-                else                                clock.incrementAlarmMinute();
-                displayAlarmTime();
+                alarmEditDigits[alarmSelectedTape] =
+                    (alarmEditDigits[alarmSelectedTape] + 1) % TAPE_DIGITS;
+                tapes.moveTo(alarmSelectedTape, alarmEditDigits[alarmSelectedTape]);
             }
             break;
 
         // ── TAPE_ADJUST_MODE ──────────────────────────────────────────────────
         case AppMode::TAPE_ADJUST_MODE:
             if (evMode == ButtonEvent::SHORT_PRESS) {
-                // exitCurrentMode() called inside enterMode() will call setZeroPoint().
+                // exitCurrentMode() inside enterMode() calls setZeroPoint().
                 enterMode(AppMode::BASE_MODE);
             } else if (evNextTape == ButtonEvent::SHORT_PRESS) {
                 calibTape = (calibTape + 1) % TAPE_COUNT;

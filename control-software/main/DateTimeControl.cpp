@@ -1,6 +1,4 @@
 #include "DateTimeControl.h"
-#include <EEPROM.h>
-#include "Config.h"
 
 // ── Constructor ───────────────────────────────────────────────────────────────
 
@@ -15,13 +13,13 @@ DateTimeControl::DateTimeControl()
 // ── Public ────────────────────────────────────────────────────────────────────
 
 void DateTimeControl::begin() {
-    loadAll();
     _lastTickMs     = millis();
     _hoursChanged   = false;
     _minutesChanged = false;
     _dateChanged    = false;
     _alarmFired     = false;
     _paused         = false;
+    _alarmArmed     = true;
 }
 
 void DateTimeControl::update() {
@@ -128,6 +126,11 @@ void DateTimeControl::incrementAlarmMinute() {
     _alarmMin = (_alarmMin + 1) % 60;
 }
 
+void DateTimeControl::setAlarm(uint8_t h, uint8_t m) {
+    _alarmHour = (h < 24) ? h : 0;
+    _alarmMin  = (m < 60) ? m : 0;
+}
+
 bool DateTimeControl::consumeAlarmFired() {
     if (_alarmFired) { _alarmFired = false; return true; }
     return false;
@@ -138,56 +141,7 @@ void DateTimeControl::dismissAlarm() {
     _alarmFired = false;
 }
 
-// ── EEPROM ────────────────────────────────────────────────────────────────────
-
-void DateTimeControl::saveTime() {
-    EEPROM.update(EEPROM_TIME_HOURS,   _h);
-    EEPROM.update(EEPROM_TIME_MINUTES, _m);
-}
-
-void DateTimeControl::saveDate() {
-    EEPROM.update(EEPROM_DATE_DAY,   _day);
-    EEPROM.update(EEPROM_DATE_MONTH, _month);
-    uint8_t yearOffset = (_year >= 2000u && _year <= 2255u)
-                             ? (uint8_t)(_year - 2000u)
-                             : 25u;
-    EEPROM.update(EEPROM_DATE_YEAR,  yearOffset);
-}
-
-void DateTimeControl::saveAlarm() {
-    EEPROM.update(EEPROM_ALARM_HOUR,    _alarmHour);
-    EEPROM.update(EEPROM_ALARM_MIN,     _alarmMin);
-    EEPROM.update(EEPROM_ALARM_ENABLED, _alarmEnabled ? 1u : 0u);
-}
-
 // ── Private helpers ───────────────────────────────────────────────────────────
-
-void DateTimeControl::loadAll() {
-    // Time
-    uint8_t h = EEPROM.read(EEPROM_TIME_HOURS);
-    uint8_t m = EEPROM.read(EEPROM_TIME_MINUTES);
-    _h = (h < 24) ? h : 12;
-    _m = (m < 60) ? m : 0;
-    _s = 0;
-
-    // Date
-    uint8_t day   = EEPROM.read(EEPROM_DATE_DAY);
-    uint8_t month = EEPROM.read(EEPROM_DATE_MONTH);
-    uint8_t yr    = EEPROM.read(EEPROM_DATE_YEAR);
-    _month = (month >= 1 && month <= 12) ? month : 1;
-    _year  = (yr <= 99u) ? (2000u + yr) : 2025u;
-    uint8_t maxDay = daysInMonth(_month, _year);
-    _day   = (day >= 1 && day <= maxDay) ? day : 1;
-
-    // Alarm
-    uint8_t ah  = EEPROM.read(EEPROM_ALARM_HOUR);
-    uint8_t am  = EEPROM.read(EEPROM_ALARM_MIN);
-    uint8_t aen = EEPROM.read(EEPROM_ALARM_ENABLED);
-    _alarmHour    = (ah < 24) ? ah : 7;
-    _alarmMin     = (am < 60) ? am : 0;
-    _alarmEnabled = (aen == 1);
-    _alarmArmed   = true;
-}
 
 void DateTimeControl::tickSecond() {
     _s++;
