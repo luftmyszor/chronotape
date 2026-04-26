@@ -1,5 +1,4 @@
 #include "TapeControl.h"
-#include <EEPROM.h>
 
 // Full-step sequence nibble per phase (forward).
 // Each nibble encodes which two coils are energised for one motor:
@@ -49,25 +48,11 @@ void TapeControl::resetDigit(uint8_t tapeIndex, uint8_t digit) {
     _currentDigit[tapeIndex] = digit;
 }
 
-// Mark all current physical tape positions as digit 0 and persist.
+// Mark all current physical tape positions as digit 0.
 void TapeControl::setZeroPoint() {
     for (uint8_t i = 0; i < TAPE_COUNT; i++) {
         _currentDigit[i]   = 0;
         _stepsRemaining[i] = 0;
-    }
-    saveCalibration();
-}
-
-void TapeControl::saveCalibration() {
-    for (uint8_t i = 0; i < TAPE_COUNT; i++) {
-        EEPROM.update(EEPROM_TAPE_BASE + i, _currentDigit[i]);
-    }
-}
-
-void TapeControl::loadCalibration() {
-    for (uint8_t i = 0; i < TAPE_COUNT; i++) {
-        uint8_t d = EEPROM.read(EEPROM_TAPE_BASE + i);
-        _currentDigit[i] = (d < TAPE_DIGITS) ? d : 0;
     }
 }
 

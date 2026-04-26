@@ -36,8 +36,9 @@ public:
     // Call this after physically aligning a single tape during calibration.
     void resetDigit(uint8_t tapeIndex, uint8_t digit);
 
-    // Mark the current physical position of ALL tapes as digit 0 and persist
-    // to EEPROM.  Use at the end of SYNC_MODE once all tapes are aligned.
+    // Mark the current physical position of ALL tapes as digit 0.
+    // Call at the end of TAPE_ADJUST_MODE once all tapes are aligned.
+    // All data is volatile; positions reset to 0 on power loss.
     void setZeroPoint();
 
     // Advance pending steps by one pulse for all active motors.
@@ -46,10 +47,6 @@ public:
 
     // True while any motor still has queued steps.
     bool isBusy() const;
-
-    // EEPROM persistence for tape digit positions.
-    void saveCalibration();
-    void loadCalibration();
 
 private:
     Adafruit_MCP23X17& _mcp;

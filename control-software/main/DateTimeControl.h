@@ -6,12 +6,11 @@
 //
 // No RTC chip required.  update() must be called every loop iteration.
 //
-// Time tracking can be paused (e.g. during SYNC / calibration mode) and resumed
+// Time tracking can be paused (e.g. during TAPE_ADJUST mode) and resumed
 // without losing the accumulated time value; millis() drift during the pause is
 // discarded so the clock does not jump on resume.
 //
-// EEPROM helpers persist state across power cycles.  All reads are validated
-// against legal ranges so a blank (0xFF) EEPROM boots to safe defaults.
+// All data is strictly volatile — state resets to defaults on power loss.
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 #include <Arduino.h>
@@ -20,7 +19,7 @@ class DateTimeControl {
 public:
     DateTimeControl();
 
-    // Load saved state from EEPROM and start tracking from the current millis().
+    // Initialise from defaults and start tracking from the current millis().
     void begin();
 
     // Advance internal counters based on elapsed millis(); no-op while paused.
@@ -67,6 +66,7 @@ public:
 
     void toggleAlarmEnabled();
     void setAlarmEnabled(bool en);
+    void setAlarm(uint8_t h, uint8_t m);   // Set alarm time directly
     void incrementAlarmHour();
     void incrementAlarmMinute();
 
@@ -76,11 +76,6 @@ public:
     // Call when the user dismisses the ringing alarm.
     // The alarm re-arms automatically once the clock leaves the alarm minute.
     void dismissAlarm();
-
-    // ── EEPROM persistence ────────────────────────────────────────────────────
-    void saveTime();
-    void saveDate();
-    void saveAlarm();
 
 private:
     // Time
@@ -107,7 +102,4 @@ private:
 
     static uint8_t daysInMonth(uint8_t month, uint16_t year);
     static bool    isLeapYear(uint16_t year);
-
-    // Load all fields from EEPROM; called by begin().
-    void loadAll();
 };
