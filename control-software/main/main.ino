@@ -150,7 +150,7 @@ static void commitEditDigits() {
                         + (uint16_t)editDigits[1] * 100
                         + (uint16_t)editDigits[2] * 10
                         +           editDigits[3];
-            if (yr < 2000 || yr > 2099) yr = 2025;
+            if (yr < 0000 || yr > 9999) yr = 2000;
             dt.setDate(dt.getDay(), dt.getMonth(), yr);
             break;
         }
@@ -163,15 +163,15 @@ static void advanceSettingSubMode() {
     switch (settingSubMode) {
         case SettingSubMode::TIME_SUB:
             settingSubMode = SettingSubMode::DATE_SUB;
-            feedback.setMode(LedId::BLUE, LedMode::BLINK);
+            feedback.setMode(LedId::BLUE, LedMode::OFF);
             break;
         case SettingSubMode::DATE_SUB:
             settingSubMode = SettingSubMode::YEAR_SUB;
-            feedback.setMode(LedId::BLUE, LedMode::ON);
+            feedback.setMode(LedId::BLUE, LedMode::BLINK);
             break;
         case SettingSubMode::YEAR_SUB:
             settingSubMode = SettingSubMode::TIME_SUB;
-            feedback.setMode(LedId::BLUE, LedMode::OFF);
+            feedback.setMode(LedId::BLUE, LedMode::ON);
             break;
     }
     loadEditDigitsFromClock();
@@ -430,7 +430,7 @@ void loop() {
                 Serial.print(F("TAPE_ADJUST  tape="));
                 Serial.println(calibTape);
             } else if (evInc == ButtonEvent::SHORT_PRESS) {
-                tapes.nudge(calibTape, 1);
+                tapes.nudge(calibTape, 20);
             }
             break;
     }

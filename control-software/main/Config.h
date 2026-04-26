@@ -30,17 +30,17 @@
 #include <Arduino.h>
 
 // ── Hardware Pins ─────────────────────────────────────────────────────────────
-constexpr uint8_t PIN_BTN_MODE         = 2;   // Cycles main modes    (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_INC          = 3;   // Increments digit     (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_NEXT_TAPE    = 4;   // Next tape            (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_ALARM_TOGGLE = 5;   // Alarm toggle / snooze (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_MODE         = 7;   // Cycles main modes    (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_INC          = 8;   // Increments digit     (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_NEXT_TAPE    = 9;   // Next tape            (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_ALARM_TOGGLE = 10;   // Alarm toggle / snooze (active-low, INPUT_PULLUP)
 
-constexpr uint8_t PIN_LED_GREEN_1 = 6;    // Mode indicator LSB
-constexpr uint8_t PIN_LED_GREEN_2 = 7;    // Mode indicator MSB
-constexpr uint8_t PIN_LED_BLUE    = 8;    // Snooze / sub-mode indicator
-constexpr uint8_t PIN_LED_RED     = 9;    // Alarm enabled indicator
+constexpr uint8_t PIN_LED_GREEN_1 = 2;    // Mode indicator LSB
+constexpr uint8_t PIN_LED_GREEN_2 = 3;    // Mode indicator MSB
+constexpr uint8_t PIN_LED_BLUE    = 4;    // Snooze / sub-mode indicator
+constexpr uint8_t PIN_LED_RED     = 6;    // Alarm enabled indicator
 
-constexpr uint8_t PIN_BUZZER = 10;        // Alarm buzzer (active or passive)
+constexpr uint8_t PIN_BUZZER = 11;        // Alarm buzzer (active or passive)
 
 // ── Button / LED array sizes ──────────────────────────────────────────────────
 constexpr uint8_t BTN_COUNT = 4;
