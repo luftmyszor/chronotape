@@ -13,10 +13,10 @@
 // update() must be called every loop iteration.
 //
 // Usage:
-//   ButtonEvent ev = input.getEvent(BtnId::B);  // consumes the event
-//   bool held      = input.isHeld(BtnId::A);    // instantaneous query
-//   input.suppressLongPress(BtnId::A);           // call after a combo to
-//                                                // prevent a stray long press
+//   ButtonEvent ev = input.getEvent(BtnId::INC);      // consumes the event
+//   bool held      = input.isHeld(BtnId::MODE);        // instantaneous query
+//   input.suppressLongPress(BtnId::MODE);               // call after a combo to
+//                                                       // prevent a stray long press
 // ─────────────────────────────────────────────────────────────────────────────
 class InputControl {
 public:
