@@ -163,15 +163,15 @@ static void advanceSettingSubMode() {
     switch (settingSubMode) {
         case SettingSubMode::TIME_SUB:
             settingSubMode = SettingSubMode::DATE_SUB;
-            feedback.setMode(LedId::BLUE, LedMode::OFF);
+            feedback.setMode(LedId::BLUE, LedMode::BLINK);
             break;
         case SettingSubMode::DATE_SUB:
             settingSubMode = SettingSubMode::YEAR_SUB;
-            feedback.setMode(LedId::BLUE, LedMode::BLINK);
+            feedback.setMode(LedId::BLUE, LedMode::ON);
             break;
         case SettingSubMode::YEAR_SUB:
             settingSubMode = SettingSubMode::TIME_SUB;
-            feedback.setMode(LedId::BLUE, LedMode::ON);
+            feedback.setMode(LedId::BLUE, LedMode::OFF);
             break;
     }
     loadEditDigitsFromClock();

@@ -34,6 +34,12 @@ void TapeControl::moveTo(uint8_t tapeIndex, uint8_t digit) {
     if (_currentDigit[tapeIndex] == digit) return;
 
     int8_t diff = (int8_t)digit - (int8_t)_currentDigit[tapeIndex];
+    
+    if (diff > TAPE_DIGITS / 2) {
+        diff -= TAPE_DIGITS;
+    } else if (diff < -(TAPE_DIGITS / 2)) {
+        diff += TAPE_DIGITS;
+    }
     _stepsRemaining[tapeIndex] = (int16_t)diff * STEPS_PER_DIGIT;
     _currentDigit[tapeIndex]   = digit;
 }
