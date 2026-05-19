@@ -7,9 +7,9 @@
     "DeadGlyphFontSizeMm": 250,
     "SegmentWidthMm": 25,
     "SegmentHeightMm": 50,
-    "TopMarginMm": 5,
+    "TopMarginMm": 20,
     "MainHorizontalPaddingMm": 0,
-    "MainVerticalPaddingMm": 20,
+    "MainVerticalPaddingMm": 10,
     "SlitCenterYOffsetMm": 13.5,
     "Debug": false
 }
