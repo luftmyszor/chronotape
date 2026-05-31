@@ -4,6 +4,7 @@ using Configuration;
 using System.IO;
 using System.Linq;
 using System.CodeDom.Compiler;
+using System.Text;
 
 Config.LoadAll(
             pathsFilePath: "config/paths.json",
@@ -13,15 +14,15 @@ Config.LoadAll(
 
 
 
-List<Frame> slits = BuildFrameList(
-    Config.WorldGeometry.TapeOriginMm,
-    Config.WorldGeometry.SlitDirection,
-    Config.WorldGeometry.SlitNormal,
-    Config.WorldGeometry.SlitUpDirection,
-    Config.WorldGeometry.SlitSegmentCenterDistanceMm,
-    Config.WorldGeometry.SlitWidthMm,
-    Config.WorldGeometry.SlitHeightMm,
-    Config.WorldGeometry.SlitCount);
+// List<Frame> slits = BuildFrameList(
+//     Config.WorldGeometry.TapeOriginMm,
+//     Config.WorldGeometry.SlitDirection,
+//     Config.WorldGeometry.SlitNormal,
+//     Config.WorldGeometry.SlitUpDirection,
+//     Config.WorldGeometry.SlitSegmentCenterDistanceMm,
+//     Config.WorldGeometry.SlitWidthMm,
+//     Config.WorldGeometry.SlitHeightMm,
+//     Config.WorldGeometry.SlitCount);
 
 List<Frame> displayedSegments = BuildFrameList(
     Config.WorldGeometry.DisplayPlanePointMm,
@@ -32,6 +33,31 @@ List<Frame> displayedSegments = BuildFrameList(
     Config.WorldGeometry.DisplayedSegmentWidthMm,
     Config.WorldGeometry.DisplayedSegmentHeightMm,
     Config.WorldGeometry.SlitCount);
+
+
+List<Frame> slits = new List<Frame>()
+{
+    new Frame(new Point3D(-74.75,0,0),Config.WorldGeometry.SlitNormal,
+    Config.WorldGeometry.SlitUpDirection,
+    Config.WorldGeometry.SlitWidthMm,
+    Config.WorldGeometry.SlitHeightMm),
+
+    new Frame(new Point3D(-26.25,0,0),Config.WorldGeometry.SlitNormal,
+    Config.WorldGeometry.SlitUpDirection,
+    Config.WorldGeometry.SlitWidthMm,
+    Config.WorldGeometry.SlitHeightMm),
+
+    new Frame(new Point3D(26.25,0,0),Config.WorldGeometry.SlitNormal,
+    Config.WorldGeometry.SlitUpDirection,
+    Config.WorldGeometry.SlitWidthMm,
+    Config.WorldGeometry.SlitHeightMm),
+
+    new Frame(new Point3D(74.75,0,0),Config.WorldGeometry.SlitNormal,
+    Config.WorldGeometry.SlitUpDirection,
+    Config.WorldGeometry.SlitWidthMm,
+    Config.WorldGeometry.SlitHeightMm),
+};
+
 Point3D?[] lightSources = ComputeLightSources(slits, displayedSegments);
 
 Console.WriteLine("\n\n");
@@ -69,7 +95,7 @@ for (int charIndex = 0; charIndex < mainCharacterBitmaps.Count; charIndex++)
 {
     CharacterBitmapSample mainSample = mainCharacterBitmaps[charIndex];
 
-    // Save main character bitmap (these stay in the root 'rendered' folder)
+    // Save main character  bitmap (these stay in the root 'rendered' folder)
     bool[][] renderedMainBitmap = ProjectionUtils.BuildSourceBitmap(
         mainSample.BitmapWidth,
         mainSample.BitmapHeight,
