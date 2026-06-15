@@ -30,17 +30,19 @@
 #include <Arduino.h>
 
 // ── Hardware Pins ─────────────────────────────────────────────────────────────
-constexpr uint8_t PIN_BTN_MODE         = 7;   // Cycles main modes    (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_INC          = 8;   // Increments digit     (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_NEXT_TAPE    = 9;   // Next tape            (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_ALARM_TOGGLE = 10;   // Alarm toggle / snooze (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_MODE         = 17;   // Cycles main modes    (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_INC          = 13;   // Increments digit     (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_NEXT_TAPE    = 15;   // Next tape            (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_ALARM_TOGGLE = 2;    // Alarm toggle / snooze (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_LIGHT        = 12;   // Alarm on/off / (active-low, INPUT_PULLUP)
 
-constexpr uint8_t PIN_LED_GREEN_1 = 2;    // Mode indicator LSB
-constexpr uint8_t PIN_LED_GREEN_2 = 3;    // Mode indicator MSB
-constexpr uint8_t PIN_LED_BLUE    = 4;    // Snooze / sub-mode indicator
-constexpr uint8_t PIN_LED_RED     = 6;    // Alarm enabled indicator
+constexpr uint8_t PIN_LED_GREEN_1 = 7;    // Mode indicator LSB
+constexpr uint8_t PIN_LED_GREEN_2 = 2;    // Mode indicator MSB
+constexpr uint8_t PIN_LED_BLUE    = 3;    // Snooze / sub-mode indicator
+constexpr uint8_t PIN_LED_RED     = 5;    // Alarm enabled indicator
+constexpr uint8_t PIN_LED_YELLOW  = 4;    // Projection light indicator
 
-constexpr uint8_t PIN_BUZZER = 11;        // Alarm buzzer (active or passive)
+constexpr uint8_t PIN_BUZZER = 6;        // Alarm buzzer (active or passive)
 
 // ── Button / LED array sizes ──────────────────────────────────────────────────
 constexpr uint8_t BTN_COUNT = 4;
@@ -59,7 +61,7 @@ static const uint8_t LED_PINS[LED_COUNT] = {
 constexpr uint8_t  TAPE_COUNT       = 4;      // HH:MM → 4 tape drives
 constexpr uint8_t  TAPE_DIGITS      = 10;     // Digits 0–9 per tape
 constexpr uint8_t  STEP_PHASES      = 4;      // Full-step: 4 phases
-constexpr uint16_t STEPS_PER_DIGIT  = 200;    // Physical steps per digit advance
+constexpr uint16_t STEPS_PER_DIGIT  = 1920;    // Physical steps per digit advance
 constexpr uint16_t STEP_INTERVAL_MS = 2;      // Min. ms between consecutive steps
 
 // ── Button Timing (InputControl) ─────────────────────────────────────────────
