@@ -30,39 +30,42 @@
 #include <Arduino.h>
 
 // ── Hardware Pins ─────────────────────────────────────────────────────────────
-constexpr uint8_t PIN_BTN_MODE         = 17;   // Cycles main modes    (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_INC          = 13;   // Increments digit     (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_NEXT_TAPE    = 15;   // Next tape            (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_ALARM_TOGGLE = 2;    // Alarm toggle / snooze (active-low, INPUT_PULLUP)
-constexpr uint8_t PIN_BTN_LIGHT        = 12;   // Alarm on/off / (active-low, INPUT_PULLUP)
+constexpr uint8_t PIN_BTN_CHG  = 17;   // Cycles main modes
+constexpr uint8_t PIN_BTN_NEXT = 15;   // Right Arrow
+constexpr uint8_t PIN_BTN_INC  = 13;   // Up Arrow
+constexpr uint8_t PIN_BTN_ON   = 12;   // Light / Date toggle
+constexpr uint8_t PIN_BTN_SET  = 16;   // Alarm toggle / Sub-mode advance
 
-constexpr uint8_t PIN_LED_GREEN_1 = 7;    // Mode indicator LSB
-constexpr uint8_t PIN_LED_GREEN_2 = 2;    // Mode indicator MSB
-constexpr uint8_t PIN_LED_BLUE    = 3;    // Snooze / sub-mode indicator
-constexpr uint8_t PIN_LED_RED     = 5;    // Alarm enabled indicator
-constexpr uint8_t PIN_LED_YELLOW  = 4;    // Projection light indicator
+constexpr uint8_t PIN_LED_GREEN_1 = 2; 
+constexpr uint8_t PIN_LED_GREEN_2 = 7; 
+constexpr uint8_t PIN_LED_BLUE    = 3; 
+constexpr uint8_t PIN_LED_RED     = 5; 
+constexpr uint8_t PIN_LED_YELLOW  = 4; 
 
-constexpr uint8_t PIN_BUZZER = 6;        // Alarm buzzer (active or passive)
+constexpr uint8_t PIN_BUZZER  = 6; 
+
+
+// 4 Standalone illumination LEDs for the tapes
+constexpr uint8_t ILLUM_LED_PINS[4] = {8, 9, 10, 11};
 
 // ── Button / LED array sizes ──────────────────────────────────────────────────
-constexpr uint8_t BTN_COUNT = 4;
-constexpr uint8_t LED_COUNT = 4;
+constexpr uint8_t BTN_COUNT = 5;
+constexpr uint8_t LED_COUNT = 5;
 
-// Pin arrays — static const so each translation unit gets its own copy
-// (avoids ODR issues when the header is included in multiple .cpp files).
 static const uint8_t BTN_PINS[BTN_COUNT] = {
-    PIN_BTN_MODE, PIN_BTN_INC, PIN_BTN_NEXT_TAPE, PIN_BTN_ALARM_TOGGLE
+    PIN_BTN_CHG, PIN_BTN_NEXT, PIN_BTN_INC, PIN_BTN_ON, PIN_BTN_SET
 };
 static const uint8_t LED_PINS[LED_COUNT] = {
-    PIN_LED_GREEN_1, PIN_LED_GREEN_2, PIN_LED_BLUE, PIN_LED_RED
+    PIN_LED_GREEN_1, PIN_LED_GREEN_2, PIN_LED_BLUE, PIN_LED_RED, PIN_LED_YELLOW
 };
 
+
 // ── Stepper Motor Physics (TapeControl) ──────────────────────────────────────
-constexpr uint8_t  TAPE_COUNT       = 4;      // HH:MM → 4 tape drives
-constexpr uint8_t  TAPE_DIGITS      = 10;     // Digits 0–9 per tape
-constexpr uint8_t  STEP_PHASES      = 4;      // Full-step: 4 phases
-constexpr uint16_t STEPS_PER_DIGIT  = 1920;    // Physical steps per digit advance
-constexpr uint16_t STEP_INTERVAL_MS = 2;      // Min. ms between consecutive steps
+constexpr uint8_t  TAPE_COUNT       = 4;      
+constexpr uint8_t  TAPE_DIGITS      = 10;     
+constexpr uint8_t  STEP_PHASES      = 8;      // CHANGED: Half-step is 8 phases
+constexpr uint16_t STEPS_PER_DIGIT  = 3840;   // CHANGED: Doubled from 1920!
+constexpr uint16_t STEP_INTERVAL_MS = 2;      // KEEP AT 2: 2ms is perfect for half-step
 
 // ── Button Timing (InputControl) ─────────────────────────────────────────────
 constexpr uint16_t DEBOUNCE_MS   = 50;    // Debounce settling time (ms)
@@ -76,16 +79,8 @@ constexpr uint16_t FLASH_PERIOD_MS = 200;   // Rapid flash — alarm ringing ind
 constexpr uint16_t BUZZER_FREQ_HZ = 1000;  // Tone frequency for the alarm
 
 // ── System Timeouts ───────────────────────────────────────────────────────────
-constexpr uint32_t SET_MODE_TIMEOUT_MS = 10000UL;    // Auto-exit setup modes after 10 s
+constexpr uint32_t SET_MODE_TIMEOUT_MS = 20000UL;    // Auto-exit setup modes after 10 s
 constexpr uint32_t SNOOZE_DURATION_MS  = 300000UL;   // Snooze duration: 5 minutes
-
-// ── Button Identifiers ────────────────────────────────────────────────────────
-enum class BtnId : uint8_t {
-    MODE         = 0,   // Cycles main modes
-    INC          = 1,   // Increments the digit on the selected tape
-    NEXT_TAPE    = 2,   // Cycles selected tape
-    ALARM_TOGGLE = 3    // Toggles alarm on/off; snoozes when ringing
-};
 
 // ── Raw Button Events (produced by InputControl) ──────────────────────────────
 enum class ButtonEvent : uint8_t {
@@ -94,12 +89,20 @@ enum class ButtonEvent : uint8_t {
     LONG_PRESS     // Held for >= LONG_PRESS_MS (fires once per hold)
 };
 
-// ── LED Identifiers ───────────────────────────────────────────────────────────
+enum class BtnId : uint8_t {
+    CHG  = 0,
+    NEXT = 1,
+    INC  = 2,
+    ON   = 3,
+    SET  = 4
+};
+
 enum class LedId : uint8_t {
-    GREEN_1 = 0,   // Mode display LSB
-    GREEN_2 = 1,   // Mode display MSB
-    BLUE    = 2,   // Snooze active (BASE_MODE) / sub-mode indicator (SETTING_MODE)
-    RED     = 3    // Alarm enabled indicator
+    GREEN_1 = 0,
+    GREEN_2 = 1,
+    BLUE    = 2,
+    RED     = 3,
+    YELLOW  = 4
 };
 
 // ── LED Operating Modes ───────────────────────────────────────────────────────

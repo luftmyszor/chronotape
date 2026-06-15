@@ -7,7 +7,11 @@
 // Phase 1: IN3+IN2 = 0b0110 = 0x6  → original 0x6666 pattern
 // Phase 2: IN2+IN1 = 0b0011 = 0x3  → original 0x3333 pattern
 // Phase 3: IN4+IN1 = 0b1001 = 0x9  → original 0x9999 pattern
-const uint8_t TapeControl::PHASE_NIBBLE[STEP_PHASES] = { 0xC, 0x6, 0x3, 0x9 };
+// 8-Step (Half-Step) sequence nibble per phase (Reversed).
+// Flipped the order of the phases to make the motors spin in the opposite direction.
+const uint8_t TapeControl::PHASE_NIBBLE[STEP_PHASES] = {
+    0x9, 0x1, 0x3, 0x2, 0x6, 0x4, 0xC, 0x8
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,6 +37,7 @@ void TapeControl::moveTo(uint8_t tapeIndex, uint8_t digit) {
     if (tapeIndex >= TAPE_COUNT || digit >= TAPE_DIGITS) return;
     if (_currentDigit[tapeIndex] == digit) return;
 
+    // 1. Calculate the shortest logical path between the OLD target and the NEW target
     int8_t diff = (int8_t)digit - (int8_t)_currentDigit[tapeIndex];
     
     if (diff > TAPE_DIGITS / 2) {
@@ -40,8 +45,12 @@ void TapeControl::moveTo(uint8_t tapeIndex, uint8_t digit) {
     } else if (diff < -(TAPE_DIGITS / 2)) {
         diff += TAPE_DIGITS;
     }
-    _stepsRemaining[tapeIndex] = (int16_t)diff * STEPS_PER_DIGIT;
-    _currentDigit[tapeIndex]   = digit;
+    
+    // 2. THE FIX: ADD the new difference to whatever the motor is already doing!
+    _stepsRemaining[tapeIndex] += (int16_t)diff * STEPS_PER_DIGIT;
+    
+    // 3. Update the target tracker
+    _currentDigit[tapeIndex] = digit;
 }
 
 void TapeControl::nudge(uint8_t tapeIndex, int16_t steps) {
@@ -105,10 +114,18 @@ void TapeControl::applyPhases() {
 
 uint16_t TapeControl::buildGPIOAB() const {
     uint16_t gpio = 0;
+    
+    // NEW: Logical to Physical mapping array.
+    // Index 0 (Tape 1) -> Nibble 0 (GPA0-3)
+    // Index 1 (Tape 2) -> Nibble 1 (GPA4-7)
+    // Index 2 (Tape 3) -> Nibble 3 (GPB4-7)  <-- Redirected!
+    // Index 3 (Tape 4) -> Nibble 2 (GPB0-3)  <-- Redirected!
+    const uint8_t physicalMap[TAPE_COUNT] = {2,3,1,0};
+
     for (uint8_t i = 0; i < TAPE_COUNT; i++) {
         if (_stepsRemaining[i] != 0) {
-            // Each motor occupies a 4-bit nibble; motor i starts at bit i*4.
-            gpio |= (uint16_t)PHASE_NIBBLE[_phase[i]] << (i * 4);
+            // Shift the bits using our new physicalMap instead of the direct index 'i'
+            gpio |= (uint16_t)PHASE_NIBBLE[_phase[i]] << (physicalMap[i] * 4);
         }
         // Idle motors keep their nibble as 0 → coils deenergised.
     }

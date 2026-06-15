@@ -1,43 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// Chronotape — main.ino
-//
-// State-machine orchestrator.  All subsystems run non-blockingly; the only job
-// of loop() is to tick every subsystem and handle the resulting events.
-//
-// Mode map (Green LED pair shows binary mode value):
-//
-//   BASE_MODE (00)
-//     Tapes display current time.
-//     BTN_MODE             → SETTING_MODE
-//     BTN_ALARM_TOGGLE     → toggle alarm on/off (Red LED reflects state)
-//     alarm fires          → alarm ringing (Green+Red LEDs flash, Buzzer on)
-//       BTN_ALARM_TOGGLE   → snooze for SNOOZE_DURATION_MS (Blue LED on)
-//       BTN_MODE / BTN_INC / BTN_NEXT_TAPE → dismiss alarm permanently
-//
-//   SETTING_MODE (01)
-//     Sub-modes: TIME → DATE → YEAR, cycled when BTN_NEXT_TAPE wraps Tape4→Tape1.
-//     Blue LED: OFF = Time, BLINK = Date, ON = Year
-//     Tapes show the four digits of the current sub-mode value.
-//     BTN_NEXT_TAPE → advance selected tape (0→1→2→3→0); wrapping advances sub-mode.
-//     BTN_INC       → increment the digit on the selected tape (0–9).
-//     BTN_MODE      → commit edits → ALARM_SETTING_MODE
-//     Inactivity    → commit edits → BASE_MODE
-//
-//   ALARM_SETTING_MODE (10)
-//     Tapes show the alarm time (four digits: AH/10, AH%10, AM/10, AM%10).
-//     BTN_NEXT_TAPE → cycle selected tape 0→1→2→3→0.
-//     BTN_INC       → increment the digit on the selected tape (0–9).
-//     BTN_MODE      → commit alarm time → TAPE_ADJUST_MODE
-//     Inactivity    → commit alarm time → BASE_MODE
-//
-//   TAPE_ADJUST_MODE (11)
-//     Time tracking paused.  Tapes stay at current physical position.
-//     BTN_NEXT_TAPE → select next tape/motor (cycles 0–3).
-//     BTN_INC       → nudge selected motor +1 raw step for fine alignment.
-//     BTN_MODE      → setZeroPoint() on all tapes → BASE_MODE
-// ─────────────────────────────────────────────────────────────────────────────
-
-#include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_MCP23X17.h>
 
@@ -49,13 +9,12 @@
 
 // ── Application modes ─────────────────────────────────────────────────────────
 enum class AppMode : uint8_t {
-    BASE_MODE          = 0,   // 00 – display time
-    SETTING_MODE       = 1,   // 01 – set time / date / year
-    ALARM_SETTING_MODE = 2,   // 10 – set alarm time
-    TAPE_ADJUST_MODE   = 3    // 11 – manual tape calibration
+    BASE_MODE          = 0,   // 00 – Default Time
+    ALARM_SETTING_MODE = 1,   // 01 – Set Alarm
+    SETTING_MODE       = 2,   // 10 – Set Time/Date/Year
+    TAPE_ADJUST_MODE   = 3    // 11 – Tape Calibration
 };
 
-// ── Setting sub-modes (used in SETTING_MODE) ──────────────────────────────────
 enum class SettingSubMode : uint8_t { TIME_SUB, DATE_SUB, YEAR_SUB };
 
 // ── Subsystem objects ─────────────────────────────────────────────────────────
@@ -72,6 +31,15 @@ static bool           snoozeActive   = false;
 static unsigned long  snoozeUntilMs  = 0;
 static unsigned long  inactivityMs   = 0;
 
+// Global Illumination, Date, & Direction State
+static bool           lightActive        = false;
+static unsigned long  lightTurnedOnMs    = 0;
+static unsigned long  lastOnPressMs      = 0;
+static bool           showingDate        = false;
+static bool           wasShowingDate     = false;
+static unsigned long  dateDisplayStartMs = 0;
+static bool           isReversed         = false; 
+
 // SETTING_MODE state
 static SettingSubMode settingSubMode = SettingSubMode::TIME_SUB;
 static uint8_t        selectedTape   = 0;
@@ -83,24 +51,74 @@ static uint8_t        alarmEditDigits[TAPE_COUNT];
 
 // TAPE_ADJUST_MODE state
 static uint8_t        calibTape = 0;
+static bool           isFastNudging = false; 
+static unsigned long  lastNudgeMs   = 0;     
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inactivity timer helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Debug helper function ────────────────────────────────────────────────────
+static void printDisplayState(const char* context) {
+    Serial.print(F("[DEBUG - "));
+    Serial.print(context);
+    Serial.print(F("] MODE: "));
+    
+    switch (appMode) {
+        case AppMode::BASE_MODE:
+            if (showingDate) Serial.print(F("0 (BASE - SHOWING DATE)"));
+            else Serial.print(F("0 (BASE - SHOWING TIME)"));
+            break;
+        case AppMode::ALARM_SETTING_MODE:
+            Serial.print(F("1 (ALARM SETTING)"));
+            break;
+        case AppMode::SETTING_MODE:
+            Serial.print(F("2 (CLOCK SETTING - "));
+            if (settingSubMode == SettingSubMode::TIME_SUB) Serial.print(F("TIME SUB)"));
+            else if (settingSubMode == SettingSubMode::DATE_SUB) Serial.print(F("DATE SUB)"));
+            else if (settingSubMode == SettingSubMode::YEAR_SUB) Serial.print(F("YEAR SUB)"));
+            break;
+        case AppMode::TAPE_ADJUST_MODE:
+            Serial.print(F("3 (TAPE ADJUST / CALIBRATION)"));
+            break;
+    }
+    
+    Serial.print(F(" | DIRECTION: "));
+    Serial.print(isReversed ? F("REVERSE (-)") : F("FORWARD (+)"));
 
-static void touchInactivity() {
-    inactivityMs = millis();
+    Serial.print(F(" | SHOULD DISPLAY ON SCREEN: ["));
+    
+    if (appMode == AppMode::BASE_MODE) {
+        if (showingDate) {
+            Serial.print(dt.getDay() / 10);   Serial.print(dt.getDay() % 10);   Serial.print(F(":"));
+            Serial.print(dt.getMonth() / 10); Serial.print(dt.getMonth() % 10);
+        } else {
+            Serial.print(dt.getHours() / 10);   Serial.print(dt.getHours() % 10);   Serial.print(F(":"));
+            Serial.print(dt.getMinutes() / 10); Serial.print(dt.getMinutes() % 10);
+        }
+    } else if (appMode == AppMode::ALARM_SETTING_MODE) {
+        for(int i=0; i<4; i++) {
+            if (i == alarmSelectedTape) Serial.print(F(">"));
+            Serial.print(alarmEditDigits[i]);
+            if (i == alarmSelectedTape) Serial.print(F("<"));
+            if (i == 1) Serial.print(F(":"));
+        }
+    } else if (appMode == AppMode::SETTING_MODE) {
+        for(int i=0; i<4; i++) {
+            if (i == selectedTape) Serial.print(F(">"));
+            Serial.print(editDigits[i]);
+            if (i == selectedTape) Serial.print(F("<"));
+            if (i == 1) Serial.print(F(":"));
+        }
+    } else if (appMode == AppMode::TAPE_ADJUST_MODE) {
+        Serial.print(F("NUDGING TAPE: ")); Serial.print(calibTape);
+    }
+    
+    Serial.println(F("]"));
 }
 
-static bool inactivityExpired() {
-    return (millis() - inactivityMs) >= SET_MODE_TIMEOUT_MS;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// SETTING_MODE helpers
+// Helpers (Inactivity, Setting Loads)
 // ─────────────────────────────────────────────────────────────────────────────
+static void touchInactivity() { inactivityMs = millis(); }
+static bool inactivityExpired() { return (millis() - inactivityMs) >= SET_MODE_TIMEOUT_MS; }
 
-// Load editDigits from the current clock value for the active sub-mode.
 static void loadEditDigitsFromClock() {
     switch (settingSubMode) {
         case SettingSubMode::TIME_SUB: {
@@ -126,30 +144,24 @@ static void loadEditDigitsFromClock() {
     }
 }
 
-// Commit editDigits to the clock for the current sub-mode.
 static void commitEditDigits() {
     switch (settingSubMode) {
         case SettingSubMode::TIME_SUB: {
             uint8_t h = editDigits[0] * 10 + editDigits[1];
             uint8_t m = editDigits[2] * 10 + editDigits[3];
-            if (h > 23) h = 23;
-            if (m > 59) m = 59;
+            if (h > 23) h = 23; if (m > 59) m = 59;
             dt.setTime(h, m);
             break;
         }
         case SettingSubMode::DATE_SUB: {
             uint8_t d  = editDigits[0] * 10 + editDigits[1];
             uint8_t mo = editDigits[2] * 10 + editDigits[3];
-            if (mo < 1 || mo > 12) mo = 1;
-            if (d  < 1 || d  > 31) d  = 1;
+            if (mo < 1 || mo > 12) mo = 1; if (d < 1 || d > 31) d = 1;
             dt.setDate(d, mo, dt.getYear());
             break;
         }
         case SettingSubMode::YEAR_SUB: {
-            uint16_t yr = (uint16_t)editDigits[0] * 1000
-                        + (uint16_t)editDigits[1] * 100
-                        + (uint16_t)editDigits[2] * 10
-                        +           editDigits[3];
+            uint16_t yr = editDigits[0]*1000 + editDigits[1]*100 + editDigits[2]*10 + editDigits[3];
             if (yr < 0000 || yr > 9999) yr = 2000;
             dt.setDate(dt.getDay(), dt.getMonth(), yr);
             break;
@@ -157,7 +169,6 @@ static void commitEditDigits() {
     }
 }
 
-// Advance to the next sub-mode, committing the current edits first.
 static void advanceSettingSubMode() {
     commitEditDigits();
     switch (settingSubMode) {
@@ -175,15 +186,9 @@ static void advanceSettingSubMode() {
             break;
     }
     loadEditDigitsFromClock();
-    for (uint8_t i = 0; i < TAPE_COUNT; i++) {
-        tapes.moveTo(i, editDigits[i]);
-    }
-    selectedTape = 0;
+    for (uint8_t i = 0; i < TAPE_COUNT; i++) tapes.moveTo(i, editDigits[i]);
+    printDisplayState("SUBMODE CHANGE");
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ALARM_SETTING_MODE helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 static void loadAlarmEditDigits() {
     uint8_t ah = dt.getAlarmHour(), am = dt.getAlarmMinute();
@@ -194,93 +199,87 @@ static void loadAlarmEditDigits() {
 static void commitAlarmEditDigits() {
     uint8_t ah = alarmEditDigits[0] * 10 + alarmEditDigits[1];
     uint8_t am = alarmEditDigits[2] * 10 + alarmEditDigits[3];
-    if (ah > 23) ah = 23;
-    if (am > 59) am = 59;
+    if (ah > 23) ah = 23; if (am > 59) am = 59;
     dt.setAlarm(ah, am);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mode transitions
 // ─────────────────────────────────────────────────────────────────────────────
-
-static void enterMode(AppMode next);
-
-// Commit any pending edits when leaving a setup mode.
 static void exitCurrentMode() {
     switch (appMode) {
-        case AppMode::SETTING_MODE:
-            commitEditDigits();
-            break;
-        case AppMode::ALARM_SETTING_MODE:
-            commitAlarmEditDigits();
-            break;
-        case AppMode::TAPE_ADJUST_MODE:
-            tapes.setZeroPoint();
-            break;
-        default:
-            break;
+        case AppMode::SETTING_MODE:       commitEditDigits(); break;
+        case AppMode::ALARM_SETTING_MODE: commitAlarmEditDigits(); break;
+        // The setZeroPoint() saves the manually adjusted positions properly on exit
+        case AppMode::TAPE_ADJUST_MODE:   tapes.setZeroPoint(); break; 
+        default: break;
     }
 }
 
 static void enterMode(AppMode next) {
     exitCurrentMode();
     appMode = next;
+    
     feedback.setModeDisplay(static_cast<uint8_t>(next));
     touchInactivity();
 
-    switch (next) {
+    if (!alarmRinging) {
+        feedback.setMode(LedId::RED, dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
+    }
 
+    isReversed = false;
+    if (next == AppMode::BASE_MODE) {
+        feedback.setMode(LedId::YELLOW, lightActive ? LedMode::ON : LedMode::OFF);
+    } else {
+        feedback.setMode(LedId::YELLOW, LedMode::OFF); 
+    }
+
+    switch (next) {
         case AppMode::BASE_MODE:
             alarmRinging = false;
             feedback.setBuzzerActive(false);
             feedback.setMode(LedId::BLUE, snoozeActive ? LedMode::ON : LedMode::OFF);
-            feedback.setMode(LedId::RED,  dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
             dt.resumeTracking();
-            // Refresh tapes with current time.
-            tapes.moveTo(0, dt.getHours()   / 10);
-            tapes.moveTo(1, dt.getHours()   % 10);
-            tapes.moveTo(2, dt.getMinutes() / 10);
-            tapes.moveTo(3, dt.getMinutes() % 10);
-            Serial.println(F("→ BASE_MODE"));
             break;
 
-        case AppMode::SETTING_MODE:
-            settingSubMode = SettingSubMode::TIME_SUB;
-            selectedTape   = 0;
-            feedback.setMode(LedId::BLUE, LedMode::OFF);  // OFF = Time sub-mode
-            feedback.setMode(LedId::RED,  LedMode::OFF);
-            loadEditDigitsFromClock();
-            for (uint8_t i = 0; i < TAPE_COUNT; i++) tapes.moveTo(i, editDigits[i]);
-            Serial.println(F("→ SETTING_MODE"));
-            break;
-
-        case AppMode::ALARM_SETTING_MODE:
+        case AppMode::ALARM_SETTING_MODE: 
             alarmSelectedTape = 0;
             feedback.setMode(LedId::BLUE, LedMode::OFF);
-            feedback.setMode(LedId::RED,  LedMode::OFF);
             loadAlarmEditDigits();
             for (uint8_t i = 0; i < TAPE_COUNT; i++) tapes.moveTo(i, alarmEditDigits[i]);
-            Serial.println(F("→ ALARM_SETTING_MODE"));
             break;
 
-        case AppMode::TAPE_ADJUST_MODE:
+        case AppMode::SETTING_MODE: 
+            settingSubMode = SettingSubMode::TIME_SUB;
+            selectedTape   = 0;
+            feedback.setMode(LedId::BLUE, LedMode::OFF); 
+            loadEditDigitsFromClock();
+            for (uint8_t i = 0; i < TAPE_COUNT; i++) tapes.moveTo(i, editDigits[i]);
+            break;
+
+        case AppMode::TAPE_ADJUST_MODE: 
             calibTape = 0;
+            isFastNudging = false; 
             dt.pauseTracking();
             feedback.setMode(LedId::BLUE, LedMode::OFF);
-            feedback.setMode(LedId::RED,  LedMode::OFF);
-            Serial.print(F("→ TAPE_ADJUST_MODE  tape="));
-            Serial.println(calibTape);
+            
+            // --- NEW: Automatically tell all tapes to spin to 00:00 ---
+            Serial.println(F("[CALIBRATION] Auto-returning all tapes to 00:00..."));
+            for (uint8_t i = 0; i < TAPE_COUNT; i++) {
+                tapes.moveTo(i, 0);
+            }
             break;
     }
+
+    printDisplayState("MODE ENTRY");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // setup
 // ─────────────────────────────────────────────────────────────────────────────
-
 void setup() {
     Serial.begin(9600);
-
+    Serial.println(F("--- CHRONOTAPE BOOTING ---"));
     if (!mcp.begin_I2C()) {
         Serial.println(F("Error: MCP23017 not found. Check wiring."));
         while (1);
@@ -291,146 +290,226 @@ void setup() {
     input.begin();
     feedback.begin();
 
+    for (uint8_t i = 0; i < 4; i++) {
+        pinMode(ILLUM_LED_PINS[i], OUTPUT);
+        digitalWrite(ILLUM_LED_PINS[i], LOW);
+    }
+
     enterMode(AppMode::BASE_MODE);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // loop
 // ─────────────────────────────────────────────────────────────────────────────
-
 void loop() {
-    // ── Tick all subsystems ───────────────────────────────────────────────────
     tapes.update();
     dt.update();
     input.update();
     feedback.update();
 
-    // ── Snooze expiry check ───────────────────────────────────────────────────
-    if (snoozeActive && (millis() >= snoozeUntilMs)) {
+    unsigned long now = millis();
+
+    // ── Global ON Button & Light Timer Logic ──────────────────────────────────
+    ButtonEvent evOn = input.getEvent(BtnId::ON);
+
+    if (evOn == ButtonEvent::SHORT_PRESS) {
+        lightActive = true;
+        lightTurnedOnMs = now;
+        for (uint8_t i = 0; i < 4; i++) digitalWrite(ILLUM_LED_PINS[i], HIGH);
+
+        if (appMode == AppMode::BASE_MODE) {
+            feedback.setMode(LedId::YELLOW, LedMode::ON);
+            if (now - lastOnPressMs <= 2000) {
+                showingDate = true;
+                dateDisplayStartMs = now;
+                printDisplayState("DATE DOUBLE-CLICK");
+            }
+            lastOnPressMs = now;
+        } else {
+            isReversed = !isReversed;
+            feedback.setMode(LedId::YELLOW, isReversed ? LedMode::ON : LedMode::OFF);
+            printDisplayState("DIRECTION TOGGLE");
+        }
+    }
+
+    if (lightActive && (now - lightTurnedOnMs >= 10000)) {
+        lightActive = false;
+        for (uint8_t i = 0; i < 4; i++) digitalWrite(ILLUM_LED_PINS[i], LOW);
+        if (appMode == AppMode::BASE_MODE) {
+            feedback.setMode(LedId::YELLOW, LedMode::OFF);
+        }
+    }
+
+    // ── Snooze expiry ─────────────────────────────────────────────────────────
+    if (snoozeActive && (now >= snoozeUntilMs)) {
         snoozeActive = false;
         alarmRinging = true;
         feedback.setModeDisplay(static_cast<uint8_t>(appMode));
         feedback.setMode(LedId::BLUE, LedMode::OFF);
         feedback.setMode(LedId::RED,  LedMode::FLASH);
         feedback.setBuzzerActive(true);
-        Serial.println(F("Snooze expired → ALARM"));
+        Serial.println(F("[ALARM] Snooze Expired! Ringing..."));
     }
 
-    // ── Propagate time changes to tapes in BASE_MODE ──────────────────────────
-    if (appMode == AppMode::BASE_MODE && !alarmRinging && !snoozeActive) {
-        bool hc = dt.consumeHoursChanged();
-        bool mc = dt.consumeMinutesChanged();
-        if (hc || mc) {
-            tapes.moveTo(0, dt.getHours()   / 10);
-            tapes.moveTo(1, dt.getHours()   % 10);
-            tapes.moveTo(2, dt.getMinutes() / 10);
-            tapes.moveTo(3, dt.getMinutes() % 10);
-        }
-        if (dt.consumeAlarmFired()) {
-            alarmRinging = true;
-            feedback.setMode(LedId::GREEN_1, LedMode::FLASH);
-            feedback.setMode(LedId::GREEN_2, LedMode::FLASH);
-            feedback.setMode(LedId::RED,     LedMode::FLASH);
-            feedback.setBuzzerActive(true);
-            Serial.println(F("ALARM RINGING"));
-        }
-    }
-
-    // ── Read button events ────────────────────────────────────────────────────
-    ButtonEvent evMode     = input.getEvent(BtnId::MODE);
-    ButtonEvent evInc      = input.getEvent(BtnId::INC);
-    ButtonEvent evNextTape = input.getEvent(BtnId::NEXT_TAPE);
-    ButtonEvent evAlarm    = input.getEvent(BtnId::ALARM_TOGGLE);
+    // ── Read remaining buttons ────────────────────────────────────────────────
+    ButtonEvent evChg  = input.getEvent(BtnId::CHG);
+    ButtonEvent evNext = input.getEvent(BtnId::NEXT);
+    ButtonEvent evInc  = input.getEvent(BtnId::INC);
+    ButtonEvent evSet  = input.getEvent(BtnId::SET);
 
     // ── State machine ─────────────────────────────────────────────────────────
     switch (appMode) {
 
-        // ── BASE_MODE ─────────────────────────────────────────────────────────
+        // ── Tryb 0: BASE_MODE ─────────────────────────────────────────────────
         case AppMode::BASE_MODE:
+            
+            if (showingDate && (now - dateDisplayStartMs >= 5000)) {
+                showingDate = false;
+                printDisplayState("DATE DISPLAY TIMEOUT");
+            }
+
+            if (!alarmRinging && !snoozeActive) {
+                bool hc = dt.consumeHoursChanged();
+                bool mc = dt.consumeMinutesChanged();
+                bool dc = dt.consumeDateChanged();
+
+                if (showingDate) {
+                    if (!wasShowingDate || dc) {
+                        tapes.moveTo(0, dt.getDay()   / 10);
+                        tapes.moveTo(1, dt.getDay()   % 10);
+                        tapes.moveTo(2, dt.getMonth() / 10);
+                        tapes.moveTo(3, dt.getMonth() % 10);
+                        printDisplayState("DATE DISPLAY REFRESH");
+                    }
+                } else {
+                    if (wasShowingDate || hc || mc) {
+                        tapes.moveTo(0, dt.getHours()   / 10);
+                        tapes.moveTo(1, dt.getHours()   % 10);
+                        tapes.moveTo(2, dt.getMinutes() / 10);
+                        tapes.moveTo(3, dt.getMinutes() % 10);
+                        printDisplayState("TIME CLOCK TICK");
+                    }
+                }
+                wasShowingDate = showingDate;
+
+                if (dt.consumeAlarmFired()) {
+                    alarmRinging = true;
+                    feedback.setMode(LedId::GREEN_1, LedMode::FLASH);
+                    feedback.setMode(LedId::GREEN_2, LedMode::FLASH);
+                    feedback.setMode(LedId::RED,     LedMode::FLASH);
+                    feedback.setBuzzerActive(true);
+                    Serial.println(F("[ALARM] Triggered! Alarm is currently ringing."));
+                }
+            }
+
             if (alarmRinging) {
-                if (evAlarm == ButtonEvent::SHORT_PRESS) {
-                    // Activate snooze: pause alarm temporarily.
-                    dt.dismissAlarm();
-                    alarmRinging  = false;
-                    snoozeActive  = true;
-                    snoozeUntilMs = millis() + SNOOZE_DURATION_MS;
-                    feedback.setBuzzerActive(false);
-                    feedback.setModeDisplay(static_cast<uint8_t>(appMode));
-                    feedback.setMode(LedId::BLUE, LedMode::ON);
-                    feedback.setMode(LedId::RED,  dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
-                    Serial.println(F("Snooze activated"));
-                } else if (evMode     == ButtonEvent::SHORT_PRESS ||
-                           evInc      == ButtonEvent::SHORT_PRESS ||
-                           evNextTape == ButtonEvent::SHORT_PRESS) {
-                    // Dismiss alarm permanently.
+                if (evSet == ButtonEvent::SHORT_PRESS) {
                     dt.dismissAlarm();
                     alarmRinging = false;
                     feedback.setBuzzerActive(false);
                     feedback.setModeDisplay(static_cast<uint8_t>(appMode));
                     feedback.setMode(LedId::RED, dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
-                    Serial.println(F("Alarm dismissed"));
+                    Serial.println(F("[ALARM] Permanently Dismissed via SET button."));
+                } 
+                else if (evChg == ButtonEvent::SHORT_PRESS || evNext == ButtonEvent::SHORT_PRESS || 
+                           evInc == ButtonEvent::SHORT_PRESS || evOn == ButtonEvent::SHORT_PRESS) {
+                    dt.dismissAlarm(); 
+                    alarmRinging  = false;
+                    snoozeActive  = true;
+                    snoozeUntilMs = now + SNOOZE_DURATION_MS;
+                    feedback.setBuzzerActive(false);
+                    feedback.setModeDisplay(static_cast<uint8_t>(appMode));
+                    feedback.setMode(LedId::BLUE, LedMode::ON);
+                    Serial.println(F("[ALARM] Snoozed for 5 minutes."));
                 }
             } else {
-                if (evMode == ButtonEvent::SHORT_PRESS) {
-                    enterMode(AppMode::SETTING_MODE);
-                } else if (evAlarm == ButtonEvent::SHORT_PRESS) {
+                if (evChg == ButtonEvent::SHORT_PRESS) {
+                    enterMode(AppMode::ALARM_SETTING_MODE); 
+                } else if (evSet == ButtonEvent::SHORT_PRESS) {
                     dt.toggleAlarmEnabled();
                     feedback.setMode(LedId::RED, dt.isAlarmEnabled() ? LedMode::ON : LedMode::OFF);
-                    Serial.print(F("Alarm "));
-                    Serial.println(dt.isAlarmEnabled() ? F("ON") : F("OFF"));
+                    Serial.print(F("[ALARM] Armed State Toggled. Enabled: "));
+                    Serial.println(dt.isAlarmEnabled() ? F("YES") : F("NO"));
                 }
             }
             break;
 
-        // ── SETTING_MODE ──────────────────────────────────────────────────────
-        case AppMode::SETTING_MODE:
-            if (evMode == ButtonEvent::SHORT_PRESS) {
-                enterMode(AppMode::ALARM_SETTING_MODE);
-            } else if (inactivityExpired()) {
-                enterMode(AppMode::BASE_MODE);
-            } else if (evNextTape == ButtonEvent::SHORT_PRESS) {
-                touchInactivity();
-                if (selectedTape < TAPE_COUNT - 1) {
-                    selectedTape++;
-                } else {
-                    selectedTape = 0;
-                    advanceSettingSubMode();
-                }
-            } else if (evInc == ButtonEvent::SHORT_PRESS) {
-                touchInactivity();
-                editDigits[selectedTape] = (editDigits[selectedTape] + 1) % TAPE_DIGITS;
-                tapes.moveTo(selectedTape, editDigits[selectedTape]);
-            }
-            break;
-
-        // ── ALARM_SETTING_MODE ────────────────────────────────────────────────
+        // ── Tryb 1: ALARM_SETTING_MODE ────────────────────────────────────────
         case AppMode::ALARM_SETTING_MODE:
-            if (evMode == ButtonEvent::SHORT_PRESS) {
-                enterMode(AppMode::TAPE_ADJUST_MODE);
+            if (evChg == ButtonEvent::SHORT_PRESS) {
+                enterMode(AppMode::SETTING_MODE); 
             } else if (inactivityExpired()) {
+                Serial.println(F("[TIMEOUT] Inactivity detected in Alarm Mode."));
                 enterMode(AppMode::BASE_MODE);
-            } else if (evNextTape == ButtonEvent::SHORT_PRESS) {
+            } else if (evNext == ButtonEvent::SHORT_PRESS) {
                 touchInactivity();
                 alarmSelectedTape = (alarmSelectedTape + 1) % TAPE_COUNT;
+                printDisplayState("ALARM CURSOR MOVE");
             } else if (evInc == ButtonEvent::SHORT_PRESS) {
                 touchInactivity();
-                alarmEditDigits[alarmSelectedTape] =
-                    (alarmEditDigits[alarmSelectedTape] + 1) % TAPE_DIGITS;
+                uint8_t moveAmt = isReversed ? (TAPE_DIGITS - 1) : 1; 
+                alarmEditDigits[alarmSelectedTape] = (alarmEditDigits[alarmSelectedTape] + moveAmt) % TAPE_DIGITS;
                 tapes.moveTo(alarmSelectedTape, alarmEditDigits[alarmSelectedTape]);
+                printDisplayState("ALARM DIGIT EDIT");
             }
             break;
 
-        // ── TAPE_ADJUST_MODE ──────────────────────────────────────────────────
-        case AppMode::TAPE_ADJUST_MODE:
-            if (evMode == ButtonEvent::SHORT_PRESS) {
-                // exitCurrentMode() inside enterMode() calls setZeroPoint().
+        // ── Tryb 2: SETTING_MODE (Time -> Date -> Year) ───────────────────────
+        case AppMode::SETTING_MODE:
+            if (evChg == ButtonEvent::SHORT_PRESS) {
+                enterMode(AppMode::TAPE_ADJUST_MODE); 
+            } else if (inactivityExpired()) {
+                Serial.println(F("[TIMEOUT] Inactivity detected in Settings Mode."));
                 enterMode(AppMode::BASE_MODE);
-            } else if (evNextTape == ButtonEvent::SHORT_PRESS) {
-                calibTape = (calibTape + 1) % TAPE_COUNT;
-                Serial.print(F("TAPE_ADJUST  tape="));
-                Serial.println(calibTape);
+            } else if (evSet == ButtonEvent::SHORT_PRESS) { 
+                touchInactivity();
+                advanceSettingSubMode(); 
+            } else if (evNext == ButtonEvent::SHORT_PRESS) {
+                touchInactivity();
+                selectedTape = (selectedTape + 1) % TAPE_COUNT;
+                printDisplayState("CLOCK CURSOR MOVE");
             } else if (evInc == ButtonEvent::SHORT_PRESS) {
-                tapes.nudge(calibTape, 20);
+                touchInactivity();
+                uint8_t moveAmt = isReversed ? (TAPE_DIGITS - 1) : 1;
+                editDigits[selectedTape] = (editDigits[selectedTape] + moveAmt) % TAPE_DIGITS;
+                tapes.moveTo(selectedTape, editDigits[selectedTape]);
+                printDisplayState("CLOCK DIGIT EDIT");
+            }
+            break;
+
+        // ── Tryb 3: TAPE_ADJUST_MODE ──────────────────────────────────────────
+        case AppMode::TAPE_ADJUST_MODE:
+            if (evChg == ButtonEvent::SHORT_PRESS) {
+                enterMode(AppMode::BASE_MODE);
+            } else if (evNext == ButtonEvent::SHORT_PRESS) {
+                calibTape = (calibTape + 1) % TAPE_COUNT;
+                printDisplayState("CALIBRATION TARGET SWAP");
+            } 
+            else {
+                int nudgeStep = isReversed ? -20 : 20;
+
+                if (evInc == ButtonEvent::SHORT_PRESS) {
+                    tapes.nudge(calibTape, nudgeStep);
+                    printDisplayState("MANUAL NUDGE CLICK");
+                } 
+                else if (evInc == ButtonEvent::LONG_PRESS) {
+                    isFastNudging = true;
+                    lastNudgeMs = now;
+                    tapes.nudge(calibTape, nudgeStep);
+                    printDisplayState("FAST NUDGE START");
+                }
+
+                if (isFastNudging) {
+                    if (input.isHeld(BtnId::INC)) {
+                        if (now - lastNudgeMs >= 40) { 
+                            tapes.nudge(calibTape, nudgeStep);
+                            lastNudgeMs = now;
+                        }
+                    } else {
+                        isFastNudging = false; 
+                        printDisplayState("FAST NUDGE STOP");
+                    }
+                }
             }
             break;
     }
